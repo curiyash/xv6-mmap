@@ -442,3 +442,31 @@ sys_pipe(void)
   fd[1] = fd1;
   return 0;
 }
+
+int sys_mmap(void){
+	// Parse the arguments
+	// char *addr;
+	// int length;
+	int prot, flags, fd, offset;
+	struct file *fp;
+
+	//if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
+	//	return -1;
+	//}
+	if (argint(2,&prot) < 0 || argint(3,&flags) < 0 || argfd(4,&fd,&fp) < 0 || argint(5,&offset) < 0){
+		return -1;
+	}
+	cprintf("%d %d %d %d\n", prot, flags, fd, offset);
+	return 0;
+}
+
+int sys_munmap(void){
+	// Parse arguments
+	char *addr;
+	int length;
+
+	if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
+                return -1;
+        }
+	return 0;
+}
