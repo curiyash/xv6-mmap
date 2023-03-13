@@ -445,18 +445,20 @@ sys_pipe(void)
 
 int sys_mmap(void){
 	// Parse the arguments
-	// char *addr;
-	// int length;
+	char *addr;
+	int length;
 	int prot, flags, fd, offset;
 	struct file *fp;
 
-	//if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
-	//	return -1;
-	//}
+	if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
+		return -1;
+	}
 	if (argint(2,&prot) < 0 || argint(3,&flags) < 0 || argfd(4,&fd,&fp) < 0 || argint(5,&offset) < 0){
 		return -1;
 	}
-	cprintf("%d %d %d %d\n", prot, flags, fd, offset);
+  addr[0] = 'y';
+  addr[1] = '\0';
+	cprintf("%s %d %d %d %d %d\n", addr, length, prot, flags, fd, offset);
 	return 0;
 }
 
@@ -466,7 +468,8 @@ int sys_munmap(void){
 	int length;
 
 	if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
-                return -1;
-        }
+    return -1;
+  }
+	cprintf("%s %d\n", addr, length);
 	return 0;
 }

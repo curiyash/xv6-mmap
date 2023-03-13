@@ -55,15 +55,23 @@ argint(int n, int *ip)
 // Fetch the nth word-sized system call argument as a pointer
 // to a block of memory of size bytes.  Check that the pointer
 // lies within the process address space.
+// QUESTION: Why is the size signed int? Can I not make it uint directly?
+// ANSWERED: Anyways they're checking for size < 0. So I think it will be safe to convert to an unsigned int directly
+// COMMENT: Skipping check for size < 0 to get full range of unsigned int. Added a check for addition overflow
 int
 argptr(int n, char **pp, int size)
 {
   int i;
+  uint size_corr = (uint) size;
   struct proc *curproc = myproc();
  
+ // From what I understand, the address is treated as an unsigned int
   if(argint(n, &i) < 0)
     return -1;
-  if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz)
+  // QUESTION: Shouldn't I also have a check for (uint)i + size > i?
+  // QUESTION: Do I need more checks here?
+  // cprintf("proc size: %d\n", curproc->sz);
+  if(size_corr < 0 || (uint)i >= curproc->sz || (uint)i+size_corr > curproc->sz || (uint)i+size_corr < i)
     return -1;
   *pp = (char*)i;
   return 0;

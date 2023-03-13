@@ -5,9 +5,9 @@
 
 int main(int argc, char *argv[]){
 	// declare and define all params
-	void *addr = (void *) 24000;
+	void *addr = (void *) 10000;
 	unsigned int length = 21;
-	int prot=0, flags=0, fd=21, offset=24;
+	int prot=0, flags=0, fd=0, offset=24;
 
 	int ret = mmap(addr, length, prot, flags, fd, offset);
 	if (ret==0){
