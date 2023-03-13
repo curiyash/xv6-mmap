@@ -2,6 +2,7 @@
 #include "stat.h"
 #include "user.h"
 #include "fs.h"
+#include "mman.h"
 
 int main(int argc, char *argv[]){
 	// declare and define all params
@@ -9,7 +10,7 @@ int main(int argc, char *argv[]){
 	unsigned int length = 21;
 	int prot=0, flags=0, fd=0, offset=24;
 
-	int ret = mmap(addr, length, prot, flags, fd, offset);
+	int ret = (int) mmap(addr, length, prot, flags, fd, offset);
 	if (ret==0){
 		printf(1, "call to mmap succeeded\n");
 	}
