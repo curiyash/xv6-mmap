@@ -103,6 +103,22 @@ struct segdesc {
 #ifndef __ASSEMBLER__
 typedef uint pte_t;
 
+void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
+
+int munmap_helper(void *addr, unsigned int length);
+
+struct mmapInfo{
+  int length; // Can use unsigned int
+  void *start;
+  void *end;
+  struct file *f;
+  int prot;
+  char valid;
+  // Do I need to keep track of processes allowed to access this file?
+  int ref;
+  int mmapFlags;
+};
+
 // Task state segment format
 struct taskstate {
   uint link;         // Old ts selector

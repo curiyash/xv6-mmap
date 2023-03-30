@@ -445,20 +445,23 @@ sys_pipe(void)
 
 int sys_mmap(void){
 	// Parse the arguments
-	char *addr;
+	char *addr = 0;
 	int length;
 	int prot, flags, fd, offset;
 	struct file *fp;
 
-	if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
+	// if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
+	if (argint(1, &length) < 0){
 		return -1;
 	}
 	if (argint(2,&prot) < 0 || argint(3,&flags) < 0 || argfd(4,&fd,&fp) < 0 || argint(5,&offset) < 0){
 		return -1;
 	}
-  addr[0] = 'y';
-  addr[1] = '\0';
 	cprintf("%s %d %d %d %d %d\n", addr, length, prot, flags, fd, offset);
+
+  // SIR: Allocate sufficient number of pages: What does this mean? From where can I get the pages exactly?
+  // ME: Find a big enough hole! (What does this mean?!)
+  mmap_helper(addr, length, prot, flags, fd, offset);
 	return 0;
 }
 
@@ -471,5 +474,6 @@ int sys_munmap(void){
     return -1;
   }
 	cprintf("%s %d\n", addr, length);
+  munmap_helper(addr, length);
 	return 0;
 }

@@ -11,6 +11,7 @@
 #define MAP_SHARED      0x01
 #define MAP_PRIVATE     0x02
 #define MAP_FIXED       0x10
+#define MAP_ANONYMOUS   0x20
 
 extern void *mmap(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
 extern int munmap(void *addr, unsigned int length);
