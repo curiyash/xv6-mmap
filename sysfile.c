@@ -461,8 +461,8 @@ int sys_mmap(void){
 
   // SIR: Allocate sufficient number of pages: What does this mean? From where can I get the pages exactly?
   // ME: Find a big enough hole! (What does this mean?!)
-  mmap_helper(addr, length, prot, flags, fd, offset);
-	return 0;
+  return (int) mmap_helper(addr, length, prot, flags, fd, offset);
+	// return 0;
 }
 
 int sys_munmap(void){

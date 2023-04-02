@@ -107,8 +107,8 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
 int munmap_helper(void *addr, unsigned int length);
 
-struct mmapInfo{
-  int length; // Can use unsigned int
+struct legend{
+  int length; // Can use unsigned int. Do you really need to store length if you're storing start and end? Will save me bytes
   void *start;
   void *end;
   struct file *f;
@@ -117,6 +117,7 @@ struct mmapInfo{
   // Do I need to keep track of processes allowed to access this file?
   int ref;
   int mmapFlags;
+  int offset;
 };
 
 // Task state segment format

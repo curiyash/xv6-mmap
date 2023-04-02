@@ -49,7 +49,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  struct mmapInfo *maps[10];   // Mapped files or region
+  struct legend *maps[NOMAPS];   // Mapped files or region
 };
 
 // Process memory is laid out contiguously, low addresses first:

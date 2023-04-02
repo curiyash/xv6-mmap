@@ -14,6 +14,11 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
+struct {
+  // struct spinlock lock;
+  struct legend maps[NMAPS];
+} mmapCache;
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -395,11 +400,11 @@ int getAddress(pde_t p){
 
 struct {
   struct spinlock lock;
-  struct mmapInfo maps[NMAPS];
+  struct legend maps[NMAPS];
 } mtable;
 
-struct mmapInfo *mmapInfoAlloc(){
-  struct mmapInfo *m;
+struct legend *legendAlloc(){
+  struct legend *m;
   for (m = mtable.maps; m<mtable.maps + NMAPS; m++){
     if (!m->valid){
       cprintf("Woah\n");
@@ -409,23 +414,18 @@ struct mmapInfo *mmapInfoAlloc(){
   return 0;
 }
 
-void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz)
-{
+// Pages are only mapped, not loaded
+void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz){
   char *mem;
-  void *start = 0;
+  // void *start = 0;
   uint a;
-
-  // if(newsz >= KERNBASE)
-  //   return 0;
-  // if(newsz < oldsz)
-  //   return oldsz;
 
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
-    if (start==0){
-      start = (void *) mem;
-    }
+    // if (start==0){
+    //   start = (void *) mem;
+    // }
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
@@ -439,17 +439,27 @@ void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz)
       return 0;
     }
   }
-  return start;
+  cprintf("a: %x\n", a);
+  return (void *) oldsz;
+}
+
+struct legend *mmapAlloc(){
+  for (int i=0; i<NMAPS; i++){
+    if (mmapCache.maps[i].ref == 0){
+      return &mmapCache.maps[i];
+    }
+  }
+  return 0;
 }
 
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
   struct proc *curproc = myproc();
   // pte_t *pte;
-  struct mmapInfo *m;
+  struct legend *m;
 
-  // Get mmapInfo struct from proc
-  if ((m = mmapInfoAlloc())==0){
-    cprintf("Call a geographer, I'm out of maps!\n");
+  // Find it in VMA struct : Sign the agreement (Do it later)
+  if ((m = mmapAlloc()) == 0){
+    cprintf("Call a geographer: I'm out of maps!\n");
     return (void *) 0xffffffff;
   }
 
@@ -457,13 +467,14 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   m->mmapFlags = flags;
   m->valid = '1';
   m->f = curproc->ofile[fd];
+  m->offset = offset;
   m->prot = prot;
 
   // How many pages do you need?
     // Well, you've been given the length, so use that
     // Round it up to a page alignment
   int newSz = PGROUNDUP(length);
-  cprintf("New size: %d\n", curproc->sz + newSz);
+  cprintf("%d | %d\n", curproc->sz, curproc->sz + newSz);
   void *start;
   start = mmapAllocUvm(curproc->pgdir, curproc->sz, curproc->sz+newSz);
   if (!start){
@@ -472,9 +483,15 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
   cprintf("start: %p\n", start);
 
-  if (loaduvm(curproc->pgdir, start, curproc->ofile[fd]->ip, offset, newSz) < 0){
+  if (loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, length) < 0){
     cprintf("Loading the file failed\n");
   }
+
+  cprintf("%s\n", start);
+  m->start = start;
+  m->end = (void *) (char *) start + length;
+
+  return start;
   
   // // Check the lower mappings
   // // From address 0 to address 0x80000000 check if there are free pages
@@ -497,7 +514,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   //     cprintf("User space ends here\n");
   //   }
   // }
-  cprintf("mmap helper: %d %s\n", myproc()->pid, *(char *)start);
+  // cprintf("mmap helper: %d %s\n", myproc()->pid, *(char *)start);
   return 0;
 }
 
