@@ -457,7 +457,7 @@ int sys_mmap(void){
 	if (argint(2,&prot) < 0 || argint(3,&flags) < 0 || argfd(4,&fd,&fp) < 0 || argint(5,&offset) < 0){
 		return -1;
 	}
-	cprintf("%s %d %d %d %d %d\n", addr, length, prot, flags, fd, offset);
+	// cprintf("%s %d %d %d %d %d\n", addr, length, prot, flags, fd, offset);
 
   // SIR: Allocate sufficient number of pages: What does this mean? From where can I get the pages exactly?
   // ME: Find a big enough hole! (What does this mean?!)
@@ -471,9 +471,10 @@ int sys_munmap(void){
 	int length;
 
 	if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
+    cprintf("Ghol\n");
     return -1;
   }
-	cprintf("%s %d\n", addr, length);
+	cprintf("%p %d\n", addr, length);
   munmap_helper(addr, length);
 	return 0;
 }

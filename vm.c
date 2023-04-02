@@ -201,6 +201,11 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   memmove(mem, init, sz);
 }
 
+// MINE: Get details of the pte
+void getDetails(pte_t *pte){
+  cprintf("%d %d %d %d %d %d\n", *pte & PTE_P, *pte & PTE_W, *pte & PTE_U, *pte & 0x8, *pte & 0x20, *pte & 0x40);
+}
+
 // Load a program segment into pgdir.  addr must be page-aligned
 // and the pages from addr to addr+sz must already be mapped.
 int
@@ -214,6 +219,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
+    getDetails(pte);
     pa = PTE_ADDR(*pte);
     if(sz - i < PGSIZE)
       n = sz - i;
@@ -422,10 +428,8 @@ void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz){
 
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
+    cprintf("%d %d\n", a, newsz);
     mem = kalloc();
-    // if (start==0){
-    //   start = (void *) mem;
-    // }
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
@@ -467,6 +471,8 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   // pte_t *pte;
   struct legend *m;
 
+  // Find if the map was already present in the process (Reopening the file)
+
   // Find it in VMA struct : Sign the agreement (Do it later)
   if ((m = mmapAlloc()) == 0){
     cprintf("Call a geographer: I'm out of maps!\n");
@@ -498,17 +504,23 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     return (void *) 0xffffffff;
   }
 
+  curproc->sz += newSz;
+
   cprintf("start: %p\n", start);
 
   // Linux is rounding up length atleast to the nearest page size
 
-  if (loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, PGROUNDUP(length)) < 0){
+  int written = 0;
+
+  if (( written = loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, PGROUNDUP(length))) < 0){
     cprintf("Loading the file failed\n");
   }
+  cprintf("written: %d\n", written);
 
-  cprintf("%s\n", start);
   m->start = start;
-  m->end = (void *) (char *) start + length;
+  // You want to right max PGROUNDUP - size
+  m->end = (void *)((char *) m->start + PGROUNDUP(length));
+  cprintf("End: %p\n", m->end);
 
   mmapAssign(m);
 
@@ -516,6 +528,54 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 }
 
 int munmap_helper(void *addr, unsigned int length){
+  cprintf("munmap: %d\n", (int) addr);
+  struct proc *currproc = myproc();
+
+  // Round down the address
+  void *roundAddr = (void *) PGROUNDDOWN((unsigned int) addr);
+
+  // Find which vma the address belongs to
+  struct legend *m = 0;
+  for (int i=0; i<NOMAPS; i++){
+    cprintf("%d %d\n", (int) currproc->maps[i]?currproc->maps[i]->start:0, (int) addr);
+    if (currproc->maps[i] && currproc->maps[i]->start<=roundAddr && roundAddr<currproc->maps[i]->end){
+      m = currproc->maps[i];
+      currproc->maps[i] = 0;
+      break;
+    }
+  }
+
+  if (m==0){
+    cprintf("Found none\n");
+    return 0;
+  }
+
+  // Clear the PTEs for the process with address from roundAddr to roundAddr + length by incrementing by PGSIZE each time
+  // Don't use deallocuvm, we might be creating a hole in the map
+  // Should we divide the map into two then?
+  // Since I am not currently handling fragmentation, we keep the unmapped region as it is sandwiched between 2 mapped regions
+  char *pa = (char *) roundAddr;
+  char *end = m->end;
+  pte_t *pte;
+  for (; pa<end; pa+=PGSIZE){
+    if ( (pte = walkpgdir(currproc->pgdir, (void *) pa, 0)) == 0){
+      panic("Couldn't get PTE");
+    }
+    if (!(*pte & PTE_P)){
+      panic("Should've been mapped");
+    }
+    // Check for dirtiness
+    getDetails(pte);
+
+    uint pa = PTE_ADDR(*pte);
+    if (pa==0){
+      panic("kfree");
+    }
+    char *v = P2V(pa);
+    kfree(v);
+    *pte = 0;
+  }
+
   cprintf("munmap helper\n");
   return 0;
 }

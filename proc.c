@@ -242,6 +242,8 @@ exit(void)
     }
   }
 
+  // Close all mmaps
+
   begin_op();
   iput(curproc->cwd);
   end_op();

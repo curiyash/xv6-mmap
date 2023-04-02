@@ -8,17 +8,24 @@ int main(int argc, char *argv[]){
 	// declare and define all params
 	void *addr = 0;
 	unsigned int length = 4;
-	int prot=PROT_READ, flags=0, fd=0, offset=4;
+	int prot=PROT_READ, flags=0, fd=0, offset=0;
 
 	fd = open("README", 0);
 
 	char *ret = (char *) mmap(addr, length, prot, flags, fd, offset);
 	if (ret!=(char *) 0xffffffff){
-		printf(1, "call to mmap succeeded %x %s\n", ret, ret);
+		printf(1, "call to mmap succeeded %x %c\n", ret, ret[0]);
 	}
-	int stat = munmap(addr, length);
+	int stat = munmap((void *) ret, length);
+	printf(1, "Blah\n");
 	if (stat==0){
-		printf(1, "call to munmap succeeded\n");
+		printf(1, "call to munmap succeeded %x\n", ret);
 	}
 	exit();
+}
+
+// Should segfault
+// map -> unmap -> access => segfault
+void test1(){
+
 }

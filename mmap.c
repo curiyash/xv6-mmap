@@ -9,17 +9,11 @@
 int main(){
     int fd = open("README", O_RDWR);
 
-    char *addr = (char *) mmap(NULL, 4, PROT_READ, MAP_SHARED, fd, 0);
-    // char *addr = (char *) mmap(NULL, 8, PROT_READ, MAP_SHARED, fd, 0);
-    if (!addr){
-        return 0;
-    }
-    // printf("%c\n", addr[0]);
-    // addr[4] = 'N';
-    // sleep(20);
-    printf("%p\n", addr);
-    // addr[10] = 'X';
-    // addr[100000] = 'D';
-    // printf("%c\n", addr[10]);
+    char *addr = (char *) mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    // char *addr2 = (char *) mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 8192);
+    char *addr3 = (char *) mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 4096);
+    char *addr2 = (char *) mmap(NULL, 8192, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+    printf("%p %p %p\n", addr, addr2, addr3);
     return 0;
 }
