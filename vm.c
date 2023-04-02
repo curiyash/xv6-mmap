@@ -466,10 +466,15 @@ void mmapAssign(struct legend *m){
   }
 }
 
+int min(int a, int b){
+  return a<b?a:b;
+}
+
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
   struct proc *curproc = myproc();
   // pte_t *pte;
   struct legend *m;
+  offset = PGROUNDDOWN(offset);
 
   // Find if the map was already present in the process (Reopening the file)
 
@@ -511,15 +516,18 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   // Linux is rounding up length atleast to the nearest page size
 
   int written = 0;
+  int canOnlyRead = min(offset+length, m->f->ip->size) - offset;
 
-  if (( written = loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, PGROUNDUP(length))) < 0){
+  cprintf("Can only read: %d\n", canOnlyRead);
+
+  if (( written = loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, canOnlyRead)) < 0){
     cprintf("Loading the file failed\n");
   }
   cprintf("written: %d\n", written);
 
   m->start = start;
   // You want to right max PGROUNDUP - size
-  m->end = (void *)((char *) m->start + PGROUNDUP(length));
+  m->end = (void *)((char *) m->start + length);
   cprintf("End: %p\n", m->end);
 
   mmapAssign(m);
@@ -555,8 +563,9 @@ int munmap_helper(void *addr, unsigned int length){
   // Should we divide the map into two then?
   // Since I am not currently handling fragmentation, we keep the unmapped region as it is sandwiched between 2 mapped regions
   char *pa = (char *) roundAddr;
-  char *end = m->end;
+  char *end = (char *) min((int) m->end, (int) ((char *) addr+PGROUNDUP(length)));
   pte_t *pte;
+  cprintf("Clearing: %d %d\n", (int) pa, (int) end);
   for (; pa<end; pa+=PGSIZE){
     if ( (pte = walkpgdir(currproc->pgdir, (void *) pa, 0)) == 0){
       panic("Couldn't get PTE");
