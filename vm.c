@@ -452,6 +452,16 @@ struct legend *mmapAlloc(){
   return 0;
 }
 
+void mmapAssign(struct legend *m){
+  struct proc *curproc = myproc();
+  for (int i=0; i<NOMAPS; i++){
+    if (curproc->maps[i]==0){
+      curproc->maps[i] = m;
+      return;
+    }
+  }
+}
+
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
   struct proc *curproc = myproc();
   // pte_t *pte;
@@ -467,6 +477,13 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   m->mmapFlags = flags;
   m->valid = '1';
   m->f = curproc->ofile[fd];
+
+  // Check if fd prot and map prot are compatible
+  int fileProt = m->f->readable?1:0 | m->f->writable?2:0;
+  if ( (fileProt & prot) == 0){
+    return (void *) 0xffffffff;
+  }
+
   m->offset = offset;
   m->prot = prot;
 
@@ -483,7 +500,9 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
   cprintf("start: %p\n", start);
 
-  if (loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, length) < 0){
+  // Linux is rounding up length atleast to the nearest page size
+
+  if (loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, PGROUNDUP(length)) < 0){
     cprintf("Loading the file failed\n");
   }
 
@@ -491,31 +510,9 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   m->start = start;
   m->end = (void *) (char *) start + length;
 
+  mmapAssign(m);
+
   return start;
-  
-  // // Check the lower mappings
-  // // From address 0 to address 0x80000000 check if there are free pages
-  // char *va = 0;
-  // // Get me those pages
-  //   // kalloc a page, map its address into the pte
-  // for (;;){
-  //   if ((pte = walkpgdir(curproc->pgdir, va, 1)) == 0){
-  //     return 0;
-  //   }
-  //   if (!(*pte & PTE_P)){
-  //     // cprintf("A free page found: %d\n", *pte);
-  //     cprintf("Free: %d %p %p\n", (*pte)>>12, pte, va);
-  //     break;
-  //   } else if (*pte & PTE_P){
-  //     // cprintf("Not free: %d %p %p\n", (*pte)>>12, pte, va);
-  //   }
-  //   va += PGSIZE;
-  //   if (va>=(char *)0x8000000){
-  //     cprintf("User space ends here\n");
-  //   }
-  // }
-  // cprintf("mmap helper: %d %s\n", myproc()->pid, *(char *)start);
-  return 0;
 }
 
 int munmap_helper(void *addr, unsigned int length){
