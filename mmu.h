@@ -83,6 +83,7 @@ struct segdesc {
 #define NPDENTRIES      1024    // # directory entries per page directory
 #define NPTENTRIES      1024    // # PTEs per page table
 #define PGSIZE          4096    // bytes mapped by a page
+#define MAX_PAGES       18      // Max file size of xv6 / 4096
 
 #define PTXSHIFT        12      // offset of PTX in a linear address
 #define PDXSHIFT        22      // offset of PDX in a linear address
@@ -103,12 +104,8 @@ struct segdesc {
 #ifndef __ASSEMBLER__
 typedef uint pte_t;
 
-void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
-
-int munmap_helper(void *addr, unsigned int length);
-
 struct legend{
-  int length; // Can use unsigned int. Do you really need to store length if you're storing start and end? Will save me bytes
+  int numPages; // Can use unsigned int. Do you really need to store length if you're storing start and end? Will save me bytes
   void *start;
   void *end;
   struct file *f;
@@ -118,7 +115,14 @@ struct legend{
   int ref;
   int mmapFlags;
   int offset;
+  uint pages[MAX_PAGES];
 };
+
+void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
+
+int munmap_helper(void *addr, unsigned int length);
+
+void clear(pde_t *pgdir, struct legend *m);
 
 // Task state segment format
 struct taskstate {

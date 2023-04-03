@@ -35,6 +35,7 @@ exec(char *path, char **argv)
   if(elf.magic != ELF_MAGIC)
     goto bad;
 
+  cprintf("Trying to exec\n");
   if((pgdir = setupkvm()) == 0)
     goto bad;
 
@@ -93,6 +94,8 @@ exec(char *path, char **argv)
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
 
+  cprintf("Done with preparing stack\n");
+
   // Commit to the user image.
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
@@ -101,6 +104,7 @@ exec(char *path, char **argv)
   curproc->tf->esp = sp;
   switchuvm(curproc);
   freevm(oldpgdir);
+  cprintf("Done exec`ing\n");
   return 0;
 
  bad:

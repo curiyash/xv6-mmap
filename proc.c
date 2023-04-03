@@ -221,6 +221,21 @@ fork(void)
   return pid;
 }
 
+void clearMap(struct legend *m){
+  m->start = 0;
+  m->end = 0;
+  m->prot = 0;
+  m->f = 0;
+  m->mmapFlags = 0;
+  m->numPages = 0;
+  m->offset = 0;
+  m->numPages = 0;
+  for (int i=0; i<MAX_PAGES; i++){
+    m->pages[i] = 0;
+  }
+  m->valid = '\0';
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
@@ -230,6 +245,7 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
+  int md;
 
   if(curproc == initproc)
     panic("init exiting");
@@ -242,7 +258,20 @@ exit(void)
     }
   }
 
-  // Close all mmaps
+  // Clear PTEs of mapped files if their ref count is 1
+  for (md = 0; md<NOMAPS; md++){
+    if (curproc->maps[md]){
+      cprintf("start: %x %d\n", curproc->maps[md]->start, curproc->maps[md]->ref);
+      if (curproc->maps[md]->ref>1){
+        clear(curproc->pgdir, curproc->maps[md]);
+      } else{
+        // Clear the struct out globally
+        clearMap(curproc->maps[md]);
+      }
+      curproc->maps[md]--;
+      curproc->maps[md] = 0;
+    }
+  }
 
   begin_op();
   iput(curproc->cwd);
