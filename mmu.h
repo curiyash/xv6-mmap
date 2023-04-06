@@ -118,6 +118,20 @@ struct legend{
   uint pages[MAX_PAGES];
 };
 
+struct legend2{
+  struct file *f;
+  char *physicalPages[MAX_PAGES];
+  int ref[MAX_PAGES];
+  int mapRef;
+};
+
+struct mmapInfo{
+  char *start;
+  char *end;
+  int numPages;
+  struct legend *pages;
+};
+
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
 
 int munmap_helper(void *addr, unsigned int length);

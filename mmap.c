@@ -8,12 +8,27 @@
 
 int main(){
     int fd = open("README", O_RDWR);
+    char c = 'x';
 
-    char *addr = (char *) mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    // char *addr2 = (char *) mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 8192);
-    char *addr3 = (char *) mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 4096);
-    char *addr2 = (char *) mmap(NULL, 8192, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    printf("Reading... %d\n", getpid());
 
-    printf("%p %p %p\n", addr, addr2, addr3);
+    sleep(10);
+
+    // read(fd, &c, 1);
+    write(fd, &c, 1);
+
+    printf("Read\n");
+
+    sleep(40);
+
+    printf("Mapping\n");
+
+    char *addr = (char *) mmap(NULL, 24, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    printf("addr: %x\n", addr);
+    printf("addr[0]: %c\n", addr[0]);
+
+    printf("Done\n");
+
+    sleep(100);
     return 0;
 }
