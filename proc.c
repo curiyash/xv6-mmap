@@ -221,19 +221,13 @@ fork(void)
   return pid;
 }
 
-void clearMap(struct legend *m){
-  m->start = 0;
-  m->end = 0;
-  m->prot = 0;
+void clearMap(struct legend2 *m){
   m->f = 0;
-  m->mmapFlags = 0;
-  m->numPages = 0;
-  m->offset = 0;
-  m->numPages = 0;
+  m->mapRef = 0;
   for (int i=0; i<MAX_PAGES; i++){
-    m->pages[i] = 0;
+    m->physicalPages[i] = 0;
+    m->ref[i] = 0;
   }
-  m->valid = '\0';
 }
 
 // Exit the current process.  Does not return.
@@ -261,12 +255,11 @@ exit(void)
   // Clear PTEs of mapped files if their ref count is 1
   for (md = 0; md<NOMAPS; md++){
     if (curproc->maps[md]){
-      cprintf("start: %x %d\n", curproc->maps[md]->start, curproc->maps[md]->ref);
-      if (curproc->maps[md]->ref>1){
+      if (curproc->maps[md]->pages->mapRef>1){
         clear(curproc->pgdir, curproc->maps[md]);
       } else{
         // Clear the struct out globally
-        clearMap(curproc->maps[md]);
+        clearMap(curproc->maps[md]->pages);
       }
       curproc->maps[md]--;
       curproc->maps[md] = 0;
@@ -326,6 +319,9 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+        // for (int i=0; i<NOMAPS; i++){
+        //   p->maps[i] = 0;
+        // }
         release(&ptable.lock);
         return pid;
       }

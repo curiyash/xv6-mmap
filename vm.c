@@ -16,8 +16,12 @@ pde_t *kpgdir;  // for use in scheduler()
 
 struct {
   // struct spinlock lock;
-  struct legend maps[NMAPS];
+  struct legend2 maps[NMAPS];
 } mmapCache;
+
+struct {
+  struct mmapInfo info[NMAPS];
+} mtable;
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -224,7 +228,6 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
-    getDetails(pte);
     pa = PTE_ADDR(*pte);
     if(sz - i < PGSIZE)
       n = sz - i;
@@ -296,7 +299,6 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
-      isMapped(v);
       kfree(v);
       *pte = 0;
     }
@@ -417,18 +419,13 @@ int getAddress(pde_t p){
 }
 
 // Pages are only mapped, not loaded
-void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz, char *present, struct legend *m){
-  cprintf("######################\n");
+void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz, int mappingPagesFrom, struct legend2 *m){
   char *mem;
-  char *mappedAddr = 0;
-  // void *start = 0;
   uint a;
-  char *start = m->start;
-  int pageNum = 0;
 
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
-    if (!present){
+    if (!m->physicalPages[mappingPagesFrom]){
       mem = kalloc();
       if(mem == 0){
         cprintf("allocuvm out of memory\n");
@@ -436,13 +433,9 @@ void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz, char *present, struct l
         return 0;
       }
       memset(mem, 0, PGSIZE);
-      m->pages[pageNum++] = (uint) mem;
+      m->physicalPages[mappingPagesFrom] = mem;
     } else{
-      mem = (char *) m->pages[pageNum++];
-    }
-    cprintf("mem: %p\n", V2P(mem));
-    if (!mappedAddr){
-      mappedAddr = mem;
+      mem = m->physicalPages[mappingPagesFrom];
     }
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
@@ -450,31 +443,49 @@ void *mmapAllocUvm(pde_t *pgdir, uint oldsz, uint newsz, char *present, struct l
       kfree(mem);
       return 0;
     }
-    if (present){
-      start += PGSIZE;
-    }
+    mappingPagesFrom++;
   }
 
-  cprintf("######################\n");
   return (void *) PGROUNDUP(oldsz);
 }
 
-struct legend *mmapAlloc(){
-  cprintf("Hallo\n");
+struct legend2 *mmapAlloc(){
   for (int i=0; i<NMAPS; i++){
-    if (mmapCache.maps[i].ref == 0){
+    if (mmapCache.maps[i].mapRef == 0){
       return &mmapCache.maps[i];
     }
   }
   return 0;
 }
 
-void mmapAssign(struct legend *m){
+void mmapAssign(struct legend2 *m, char *start, int offset, int length){
   struct proc *curproc = myproc();
+
+  int numPages = (PGROUNDUP(offset + length) - offset) / PGSIZE;
+  cprintf("Number of pages: %d\n", numPages);
+
+  struct mmapInfo *mI = 0;
+  for (int i=0; i<NMAPS; i++){
+    if (mtable.info[i].valid==0){
+      mI = &mtable.info[i];
+      break;
+    }
+  }
+
+  mI->start = start;
+  mI->end = start + length;
+  mI->pages = m;
+  mI->valid = 1;
+  mI->numPages = numPages;
+
   for (int i=0; i<NOMAPS; i++){
+    cprintf("%x\n", curproc->maps[i]);
     if (curproc->maps[i]==0){
-      curproc->maps[i] = m;
+      cprintf("Assigning: %d %d\n", i, curproc->pid);
+      curproc->maps[i] = mI;
       return;
+    } else{
+      cprintf("%x %x %x %d %d\n", mI->start, mI->end, mI->pages, mI->numPages, mI->valid);
     }
   }
 }
@@ -487,28 +498,29 @@ char *getPTE(char *start){
   return (char *) PTE_ADDR(walkpgdir(myproc()->pgdir, start, 0));
 }
 
+void printInfo(struct legend2 *m){
+  for (int i=0; i<MAX_PAGES; i++){
+    cprintf("%d: %x\n", i, m->physicalPages[i]);
+  }
+}
+
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
   struct proc *curproc = myproc();
-  cprintf("PID: %d\n", curproc->pid);
-  // pte_t *pte;
-  struct legend *m = 0;
+  struct legend2 *m = 0;
   offset = PGROUNDDOWN(offset);
 
   struct file *f = curproc->ofile[fd];
-  struct legend *old;
+  struct legend2 *old;
   char *mapFrom = 0;
 
   // Find if the map was already present in the process (Reopening the file)
 
   // Find in the global cache
   for (int i=0; i<NMAPS; i++){
-    if ( (old = &mmapCache.maps[i])->ref != 0){
-      if (old->f->ip == f->ip && old->offset == offset){
-        cprintf("Boom, found!\n");
+    if ( (old = &mmapCache.maps[i])->mapRef != 0){
+      if (old->f->ip == f->ip){
         m = &mmapCache.maps[i];
-        mapFrom = m->start;
-        cprintf("%x - %x\n", m->start, m->end);
-        // return (void *) 0xffffffff;
+        mapFrom = (char *) m;
         break;
       }
     }
@@ -520,14 +532,16 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     return (void *) 0xffffffff;
   }
 
-  m->numPages = PGROUNDUP(length) / PGSIZE;
-  m->mmapFlags = flags;
-  m->valid = '1';
+  // m->numPages = PGROUNDUP(length) / PGSIZE;
+  // m->mmapFlags = flags;
+  // m->valid = '1';
   m->f = curproc->ofile[fd];
-  m->offset = offset;
-  m->prot = prot;
-  m->ref++;
+  // m->offset = offset;
+  // m->prot = prot;
+  m->mapRef++;
+  m->mapRef++;
   m->f->ref++;
+  cprintf("ref: %d\n", m->f->ref);
 
   // Check if fd prot and map prot are compatible
   int fileProt = m->f->readable?1:0 | m->f->writable?2:0;
@@ -540,7 +554,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     // Round it up to a page alignment
   int newSz = PGROUNDUP(length);
   void *start;
-  start = mmapAllocUvm(curproc->pgdir, curproc->sz, curproc->sz+newSz, mapFrom, m);
+  start = mmapAllocUvm(curproc->pgdir, curproc->sz, curproc->sz+newSz, offset, m);
 
 
   if (!start){
@@ -548,10 +562,6 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   }
 
   curproc->sz += newSz;
-
-  cprintf("start: %p %p\n", start, getPTE(start));
-
-  // Linux is rounding up length atleast to the nearest page size
 
   int written = 0;
   int canOnlyRead = min(offset+length, m->f->ip->size) - offset;
@@ -561,17 +571,10 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   if (!mapFrom && (( written = loaduvm(curproc->pgdir, (char *) start, curproc->ofile[fd]->ip, offset, canOnlyRead)) < 0)){
     cprintf("Loading the file failed\n");
   }
-  cprintf("written: %d\n", written);
 
-  // m->start = start;
-  // You want to right max PGROUNDUP - size
-  m->start = start;
-  m->end = (void *)((char *) m->start + length);
-    
-  cprintf("End: %p %p\n", m->start, m->end);
+  mmapAssign(m, start, offset, length);
 
-  mmapAssign(m);
-
+  printInfo(m);
   return start;
 }
 
@@ -580,15 +583,13 @@ int munmap_helper(void *addr, unsigned int length){
   struct proc *currproc = myproc();
 
   // Round down the address
-  void *roundAddr = (void *) PGROUNDDOWN((unsigned int) addr);
+  char *roundAddr = (char *) PGROUNDDOWN((unsigned int) addr);
 
   // Find which vma the address belongs to
-  struct legend *m = 0;
+  struct legend2 *m = 0;
   for (int i=0; i<NOMAPS; i++){
-    cprintf("%d %d\n", (int) currproc->maps[i]?currproc->maps[i]->start:0, (int) addr);
-    if (currproc->maps[i] && currproc->maps[i]->start<=roundAddr && roundAddr<currproc->maps[i]->end){
-      m = currproc->maps[i];
-      // currproc->maps[i] = 0;
+    if (currproc->maps[i]->valid && currproc->maps[i]->start<=roundAddr && roundAddr<currproc->maps[i]->end){
+      m = currproc->maps[i]->pages;
       break;
     }
   }
@@ -602,44 +603,44 @@ int munmap_helper(void *addr, unsigned int length){
   // Don't use deallocuvm, we might be creating a hole in the map
   // Should we divide the map into two then?
   // Since I am not currently handling fragmentation, we keep the unmapped region as it is sandwiched between 2 mapped regions
-  char *va = (char *) roundAddr;
-  char *end = (char *) min((int) m->end, (int) ((char *) addr+PGROUNDUP(length)));
-  pte_t *pte;
-  cprintf("Clearing: %d %d\n", (int) va, (int) end);
-  for (; va<end; va+=PGSIZE){
-    if ( (pte = walkpgdir(currproc->pgdir, (void *) va, 0)) == 0){
-      panic("Couldn't get PTE");
-    }
-    if (!(*pte & PTE_P)){
-      panic("Should've been mapped");
-    }
+  // char *va = (char *) roundAddr;
+  // char *end = (char *) min((int) m->end, (int) ((char *) addr+PGROUNDUP(length)));
+  // pte_t *pte;
+  // cprintf("Clearing: %d %d\n", (int) va, (int) end);
+  // for (; va<end; va+=PGSIZE){
+  //   if ( (pte = walkpgdir(currproc->pgdir, (void *) va, 0)) == 0){
+  //     panic("Couldn't get PTE");
+  //   }
+  //   if (!(*pte & PTE_P)){
+  //     panic("Should've been mapped");
+  //   }
 
-    // If dirty, write back to disk
-    getDetails(pte);
-    if (isDirty(pte)){
-      cprintf("can write: %d\n", m->f->writable);
-      if (filewrite(m->f, (char *) va, PGSIZE) < 0){
-        cprintf("something wrong\n");
-      }
-      cprintf("%d %d\n", m->f->readable, m->f->writable);
-    }
+  //   // If dirty, write back to disk
+  //   getDetails(pte);
+  //   if (isDirty(pte)){
+  //     cprintf("can write: %d\n", m->f->writable);
+  //     if (filewrite(m->f, (char *) va, PGSIZE) < 0){
+  //       cprintf("something wrong\n");
+  //     }
+  //     cprintf("%d %d\n", m->f->readable, m->f->writable);
+  //   }
 
-    uint pa = PTE_ADDR(*pte);
-    cprintf("Before\n");
-    if (pa==0){
-      panic("kfree");
-    }
-    cprintf("After\n");
-    char *v = P2V(pa);
-    kfree(v);
-    *pte = 0;
-  }
+  //   uint pa = PTE_ADDR(*pte);
+  //   cprintf("Before\n");
+  //   if (pa==0){
+  //     panic("kfree");
+  //   }
+  //   cprintf("After\n");
+  //   char *v = P2V(pa);
+  //   kfree(v);
+  //   *pte = 0;
+  // }
 
   cprintf("munmap helper\n");
   return 0;
 }
 
-void clear(pde_t *pgdir, struct legend *m){
+void clear(pde_t *pgdir, struct mmapInfo *m){
   // Get the pte, clear it
   pte_t *pte;
 

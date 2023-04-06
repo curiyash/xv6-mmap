@@ -94,7 +94,7 @@ exec(char *path, char **argv)
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
 
-  cprintf("Done with preparing stack\n");
+  // cprintf("Done with preparing stack\n");
 
   // Commit to the user image.
   oldpgdir = curproc->pgdir;
@@ -104,7 +104,7 @@ exec(char *path, char **argv)
   curproc->tf->esp = sp;
   switchuvm(curproc);
   freevm(oldpgdir);
-  cprintf("Done exec`ing\n");
+  // cprintf("Done exec`ing\n");
   return 0;
 
  bad:

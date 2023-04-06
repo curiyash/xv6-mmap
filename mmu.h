@@ -129,14 +129,15 @@ struct mmapInfo{
   char *start;
   char *end;
   int numPages;
-  struct legend *pages;
+  struct legend2 *pages;
+  int valid;
 };
 
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
 
 int munmap_helper(void *addr, unsigned int length);
 
-void clear(pde_t *pgdir, struct legend *m);
+void clear(pde_t *pgdir, struct mmapInfo *m);
 
 // Task state segment format
 struct taskstate {
