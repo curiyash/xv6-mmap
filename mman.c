@@ -10,7 +10,7 @@ int main(int argc, char *argv[]){
 	unsigned int length = 8192;
 	int prot=PROT_READ | PROT_WRITE, flags=0, fd=0, offset=0;
 
-	fd = open("README", O_RDWR);
+	open("README", O_RDWR);
 
 	char *ret = (char *) mmap(addr, length, prot, flags, fd, offset);
 	// close(fd);
@@ -20,7 +20,7 @@ int main(int argc, char *argv[]){
 	// int stat = munmap((void *) ret, 4096);
 	// if (stat==0){
 	// 	printf(1, "call to munmap succeeded %x\n", ret);
-	// }
+	// }asd
 	exit();
 }
 

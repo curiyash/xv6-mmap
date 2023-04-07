@@ -142,6 +142,13 @@ int munmap_helper(void *addr, unsigned int length);
 
 void clear(pde_t *pgdir, struct mmapInfo *m);
 
+struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int flags, struct file *f, int offset);
+
+int readFromPageCache(struct legend2 *m, char *addr, int offset, int length);
+
+struct legend2 *findInCache(struct file *f);
+
+
 // Task state segment format
 struct taskstate {
   uint link;         // Old ts selector
