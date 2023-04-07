@@ -10,7 +10,7 @@ int main(int argc, char *argv[]){
 	unsigned int length = 8192;
 	int prot=PROT_READ | PROT_WRITE, flags=0, fd=0, offset=0;
 
-	open("README", O_RDWR);
+	fd = open("README", O_RDWR);
 
 	char *ret = (char *) mmap(addr, length, prot, flags, fd, offset);
 	// close(fd);
