@@ -128,7 +128,10 @@ struct legend2{
 struct mmapInfo{
   char *start;
   char *end;
+  int firstPageIndex;
   int numPages;
+  int prot;
+  int flags;
   struct legend2 *pages;
   int valid;
 };

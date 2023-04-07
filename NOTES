@@ -1,0 +1,2 @@
+- Linux creates two different mmap for the same parameters
+    - So same file contents are already present in the process address space, but they aren't looked at. A new mapping is created everytime
