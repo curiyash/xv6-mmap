@@ -208,7 +208,7 @@ inituvm(pde_t *pgdir, char *init, uint sz)
 
 // MINE: Get details of the pte
 void getDetails(pte_t *pte){
-  cprintf("%d %d %d %d %d %d\n", *pte & PTE_P, *pte & PTE_W, *pte & PTE_U, *pte & 0x8, *pte & 0x20, *pte & 0x40);
+  // cprintf("%d %d %d %d %d %d\n", *pte & PTE_P, *pte & PTE_W, *pte & PTE_U, *pte & 0x8, *pte & 0x20, *pte & 0x40);
 }
 
 int isDirty(pte_t *pte){
@@ -240,7 +240,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
 }
 
 int isMapped(char *v){
-  cprintf("%x\n", v);
+  // cprintf("%x\n", v);
   return 0;
 }
 
@@ -358,13 +358,17 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("copyuvm: page not present");
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
+    // cprintf("Bad 1\n");
     if((mem = kalloc()) == 0)
       goto bad;
+    // cprintf("Bad 2\n");
     memmove(mem, (char*)P2V(pa), PGSIZE);
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
       kfree(mem);
       goto bad;
     }
+    // cprintf("Came till mappages just fine\n");
+    cprintf("Copyuvm address: %x\n", P2V(PTE_ADDR(*pte)));
   }
   return d;
 
@@ -415,6 +419,7 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 }
 
 char *extend(struct proc *p, uint oldsz, uint newsz){
+  // cprintf("newsz: %d\n", newsz);
   p->sz += newsz;
   return (char *) oldsz;
 }
@@ -426,6 +431,7 @@ int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma){
   int mappingPagesFrom;
 
   mappingPagesFrom = vma->firstPageIndex;
+  // cprintf("first page index: %d\n", vma->firstPageIndex);
 
   a = (uint) vma->start;
 
@@ -439,9 +445,12 @@ int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma){
       }
       memset(mem, 0, PGSIZE);
       m->physicalPages[mappingPagesFrom] = mem;
+      // cprintf("1: %x\n", mem);
     } else{
       mem = m->physicalPages[mappingPagesFrom];
+      // cprintf("2: %x\n", mem);
     }
+    cprintf("Allocating page %x for %x\n", mem, a);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, (uint) vma->end, (uint) vma->start);
@@ -465,7 +474,7 @@ struct legend2 *mmapAlloc(){
 
 struct mmapInfo *mmapAssign(struct legend2 *m, char *start, int offset, int length, int prot, int flags){
   int numPages = (PGROUNDUP(offset + length) - offset) / PGSIZE;
-  cprintf("Number of pages: %d\n", numPages);
+  // cprintf("Number of pages: %d\n", numPages);
 
   // Allocate a struct mmapInfo
   struct mmapInfo *mI = 0;
@@ -498,42 +507,44 @@ char *getPTE(char *start){
 
 void printInfo(struct legend2 *m){
   for (int i=0; i<MAX_PAGES; i++){
-    cprintf("%d: %x\n", i, m->physicalPages[i]);
+    // cprintf("%d: %x\n", i, m->physicalPages[i]);
   }
 }
 
 // Map the pages into struct legend2 only if they could be loaded
 int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m){
   // pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz
+  // cprintf("Offset: %d | i: %d | offset + i: %d\n", offset, i, offset + i);a
   uint i, pa, n, sz, offset;
   pte_t *pte;
-  // int pageNum;
+  int pageNum;
   char *addr;
 
   addr = m->start;
-  sz = m->numPages*PGSIZE;
-  offset = m->firstPageIndex;
-  // pageNum = m->firstPageIndex;
+  sz = min(m->numPages*PGSIZE, map->f->ip->size - m->firstPageIndex*PGSIZE);
+  offset = m->firstPageIndex * PGSIZE;
+  pageNum = m->firstPageIndex;
 
   if((uint) addr % PGSIZE != 0)
     panic("loaduvm: addr must be page aligned");
   for(i = 0; i < sz; i += PGSIZE){
-    cprintf("%d\n", i);
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
+    cprintf("Loaduvm address: %x\n", P2V(PTE_ADDR(*pte)));
     pa = PTE_ADDR(*pte);
-    cprintf("%x\n", P2V(pa));
     // If the page was not in the cache
-    // if (!map->ref[pageNum]){
-    if(sz - i < PGSIZE)
-      n = sz - i;
-    else
-      n = PGSIZE;
-    if(readi(map->f->ip, P2V(pa), offset+i, n) != n)
-      return -1;
-    // }
-    // map->ref[pageNum]++;
-    // pageNum++;
+    if (!map->ref[pageNum]){
+      if(sz - i < PGSIZE)
+        n = sz - i;
+      else
+        n = PGSIZE;
+      int written;
+      if(( written = readi(map->f->ip, P2V(pa), offset+i, n) ) != n){
+        return -1;
+      }
+    }
+    map->ref[pageNum]++;
+    pageNum++;
   }
   return 0;
 }
@@ -569,25 +580,85 @@ int readFromPageCache(struct legend2 *m, char *addr, int offset, int length){
   if (!addr){
     return 0;
   }
+  if (offset >= m->f->ip->size){
+    return 0;
+  }
   int fromPage = PGROUNDDOWN(offset) / PGSIZE;
-  int lastPage = PGROUNDUP(offset + length) / PGSIZE;
+  int lastPage = PGROUNDDOWN(offset + length) / PGSIZE;
 
-  for (int i = fromPage; i < lastPage; i++){
+  if ( (offset + length) % PGSIZE == 0){
+    lastPage--;
+  }
+
+  // cprintf("fromPage: %d | lastPage: %d | %d %d\n", fromPage, lastPage, offset, length);
+
+  if (!m->physicalPages[fromPage]){
+      panic("Page was not allocated\n");
+  }
+
+  char *copyFrom = m->physicalPages[fromPage] + (offset - PGROUNDDOWN(offset));
+  int copy = length;
+  // cprintf("%d %d %d\n", length, PGSIZE - offset, m->f->ip->size);
+  // cprintf("Copying from: %x %d bytes\n", copyFrom, copy);
+
+  memmove(addr, copyFrom, copy);
+  if (addr[0] == '\0'){
+    return 0;
+  }
+
+  uint a = copy;
+
+  for (int i = fromPage+1; i < lastPage; i++){
     if (!m->physicalPages[i]){
       panic("Page was not allocated\n");
     }
-    memmove(addr, m->physicalPages[i], PGSIZE);
+    memmove(addr + a, m->physicalPages[i], PGSIZE);
+    if (addr[a] == '\0'){
+      return 0;
+    }
+    a += PGSIZE;
   }
 
-  int rem = length - PGROUNDDOWN(offset+length);
+  if (lastPage!=fromPage){
+    int rem = length - PGROUNDDOWN(offset+length);
+    // cprintf("rem: %d\n", rem);
 
-  if (!m->physicalPages[lastPage]){
-      panic("Page was not allocated\n");
+    if (!m->physicalPages[lastPage]){
+        panic("Page was not allocated\n");
+    }
+    memmove(addr+a, m->physicalPages[lastPage], rem);
+
+    // cprintf("Done copying: %d\n", length);
+
+    if (addr[0] == '\0'){
+      return 0;
+    }
   }
-  memmove(addr, m->physicalPages[lastPage], rem);
-
-  cprintf("Done copying\n");
   return length;
+}
+
+int mmapdeallocuvm(pde_t *pgdir, uint oldsz, uint newsz){
+  pte_t *pte;
+  uint a, pa;
+
+  if(newsz >= oldsz)
+    return oldsz;
+
+  a = PGROUNDUP(newsz);
+  for(; a  < oldsz; a += PGSIZE){
+    pte = walkpgdir(pgdir, (char*)a, 0);
+    if(!pte)
+      a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
+    else if((*pte & PTE_P) != 0){
+      pa = PTE_ADDR(*pte);
+      if(pa == 0)
+        panic("kfree");
+      // char *v = P2V(pa);
+      // kfree(v);
+      *pte = 0;
+    }
+  }
+  return newsz;
 }
 
 struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int flags, struct file *f, int offset){
@@ -607,7 +678,7 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
   m->mapRef++;
   m->mapRef++;
   m->f->ref++;
-  cprintf("ref: %d\n", m->f->ref);
+  // cprintf("ref: %d\n", m->f->ref);
 
   // Check if fd prot and map prot are compatible
   int fileProt = m->f->readable?1:0 | m->f->writable?2:0;
@@ -638,12 +709,17 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
   int written;
   cprintf("Loading...\n");
 
+  ilock(m->f->ip);
   if (( written = mmapLoadUvm(currproc->pgdir, m, vma)) < 0){
-    cprintf("Loading failed\n");
+    // cprintf("Loading failed\n");
+    iunlock(m->f->ip);
     return 0;
   }
+  iunlock(m->f->ip);
 
   printInfo(m);
+  mmapdeallocuvm(currproc->pgdir, currproc->sz, currproc->sz - newSz);
+  currproc->sz -= newSz;
 
   freeVMA(vma);
   return m;
@@ -667,8 +743,8 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   m->f = currproc->ofile[fd];
   m->mapRef++;
   m->mapRef++;
-  m->f->ref++;
-  cprintf("ref: %d\n", m->f->ref);
+  // m->f->ref++;
+  // cprintf("ref: %d\n", m->f->ref);
 
   // Check if fd prot and map prot are compatible
   int fileProt = m->f->readable?1:0 | m->f->writable?2:0;
@@ -687,13 +763,13 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
   // Assign to the process
   for (int i=0; i<NOMAPS; i++){
-    cprintf("%x\n", currproc->maps[i]);
+    // cprintf("%x\n", currproc->maps[i]);
     if (currproc->maps[i]==0){
-      cprintf("Assigning: %d %d\n", i, currproc->pid);
+      // cprintf("Assigning: %d %d\n", i, currproc->pid);
       currproc->maps[i] = vma;
       break;
     } else{
-      cprintf("%x %x %x %d %d\n", vma->start, vma->end, vma->pages, vma->numPages, vma->valid);
+      // cprintf("%x %x %x %d %d\n", vma->start, vma->end, vma->pages, vma->numPages, vma->valid);
     }
   }
 
@@ -710,19 +786,22 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     // Use the struct legend and the vma to figure out which pages are needed and load only the necessary pages
   int written;
 
-  cprintf("Loading...\n");
+  // cprintf("Loading...\n");
 
-  if (( written = mmapLoadUvm(currproc->pgdir, m, vma)) == 0){
+  ilock(m->f->ip);
+  if (( written = mmapLoadUvm(currproc->pgdir, m, vma)) < 0){
     cprintf("Loading failed\n");
+    iunlock(m->f->ip);
     return (void *) 0xffffffff;
   }
+  iunlock(m->f->ip);
 
   printInfo(m);
-  return start;
+  return vma->start;
 }
 
 int munmap_helper(void *addr, unsigned int length){
-  cprintf("munmap: %d\n", (int) addr);
+  // cprintf("munmap: %d\n", (int) addr);
   struct proc *currproc = myproc();
 
   // Round down the address
@@ -738,7 +817,7 @@ int munmap_helper(void *addr, unsigned int length){
   }
 
   if (m==0){
-    cprintf("Found none\n");
+    // cprintf("Found none\n");
     return 0;
   }
 
@@ -746,15 +825,15 @@ int munmap_helper(void *addr, unsigned int length){
   char *end = (char *) min((int) m->end, (int) ((char *) addr+PGROUNDUP(length)));
 
   char *firstPage = roundAddr;
-  char *lastPage = (char *) PGROUNDUP((int) (addr + length));
-  int numPages = (lastPage - firstPage) / PGSIZE;
+  // char *lastPage = (char *) PGROUNDUP((int) (addr + length));
+  // int numPages = (lastPage - firstPage) / PGSIZE;
   int startingPage = (firstPage - m->start) / PGSIZE;
-  cprintf("Starting page: %d\n", startingPage);
+  // cprintf("Starting page: %d\n", startingPage);
 
-  cprintf("Clearing %d pages\n", numPages);
+  // cprintf("Clearing %d pages\n", numPages);
 
   pte_t *pte;
-  cprintf("Clearing: %d %d\n", (int) va, (int) end);
+  // cprintf("Clearing: %d %d\n", (int) va, (int) end);
   for (; va<end; va+=PGSIZE){
     if ( (pte = walkpgdir(currproc->pgdir, (void *) va, 0)) == 0){
       panic("Couldn't get PTE");
@@ -764,7 +843,7 @@ int munmap_helper(void *addr, unsigned int length){
     }
 
     // If dirty, write back to disk
-    getDetails(pte);
+    // getDetails(pte);
     if (isDirty(pte)){
       cprintf("Page was dirty\n");
       if (filewrite(m->pages->f, (char *) va, PGSIZE) < 0){
@@ -773,17 +852,17 @@ int munmap_helper(void *addr, unsigned int length){
     }
 
     uint pa = PTE_ADDR(*pte);
-    cprintf("Before\n");
+    // cprintf("Before\n");
     if (pa==0){
       panic("kfree");
     }
-    cprintf("After\n");
+    // cprintf("After\n");
     char *v = P2V(pa);
     kfree(v);
     *pte = 0;
 
     // Decrement the reference count for the page
-    cprintf("Reference count for page %d was: %d\n", startingPage, m->pages->ref[startingPage]);
+    // cprintf("Reference count for page %d was: %d\n", startingPage, m->pages->ref[startingPage]);
     m->pages->ref[startingPage]--;
     // Decrement the reference count for the map
     // m->pages->mapRef--;
@@ -802,11 +881,11 @@ void clear(pde_t *pgdir, struct mmapInfo *m){
   pte_t *pte;
 
   pte = walkpgdir(pgdir, m->start, 0);
-  cprintf("Address: %x %x\n", m->start, P2V(PTE_ADDR(*pte)));
   if (!pte){
     panic("Expected to be mapped\n");
   }
   for (int i=0; i<m->numPages; i++){
+    cprintf("Exit Address: %x %x\n", m->start, P2V(PTE_ADDR(*pte)));
     *pte = 0;
     pte++;
   }

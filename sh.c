@@ -57,6 +57,7 @@ struct cmd *parsecmd(char*);
 void
 runcmd(struct cmd *cmd)
 {
+  printf(1, "Trying to run\n");
   int p[2];
   struct backcmd *bcmd;
   struct execcmd *ecmd;
@@ -164,9 +165,15 @@ main(void)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
-    if(fork1() == 0)
+    if(fork1() == 0){
+      printf(1, "Reading %x\n", buf);
       runcmd(parsecmd(buf));
+    }
+    else{
+      printf(1, "In else\n");
+    }
     wait();
+    printf(1, "Came back\n");
   }
   exit();
 }

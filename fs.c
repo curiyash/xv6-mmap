@@ -466,9 +466,6 @@ readi(struct inode *ip, char *dst, uint off, uint n)
   if(off + n > ip->size)
     n = ip->size - off;
   
-  // Find the inode-offset combo in mmapCache
-  // If not found, kalloc a page and write to it, which means you need to set the bp->data to point to the page
-
   // Buffer should no longer contain data but a pointer to page
   for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
     bp = bread(ip->dev, bmap(ip, off/BSIZE));

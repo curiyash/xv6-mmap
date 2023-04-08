@@ -6,6 +6,9 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 struct {
   struct spinlock lock;
@@ -203,6 +206,7 @@ fork(void)
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
+
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
@@ -222,6 +226,7 @@ fork(void)
 }
 
 void clearMap(struct legend2 *m){
+  m->f->ref--;
   m->f = 0;
   m->mapRef = 0;
   for (int i=0; i<MAX_PAGES; i++){
@@ -253,8 +258,9 @@ exit(void)
   }
 
   // Clear PTEs of mapped files if their ref count is 1
+  // cprintf("Exiting\n");
   for (md = 0; md<NOMAPS; md++){
-    if (curproc->maps[md]){
+    if (curproc->maps[md] && curproc->maps[md]->valid==1){
       if (curproc->maps[md]->pages->mapRef>1){
         clear(curproc->pgdir, curproc->maps[md]);
       } else{
@@ -262,9 +268,11 @@ exit(void)
         clearMap(curproc->maps[md]->pages);
       }
       curproc->maps[md]--;
+      curproc->maps[md]->valid = 0;
       curproc->maps[md] = 0;
     }
   }
+  // cprintf("Exited\n");
 
   begin_op();
   iput(curproc->cwd);

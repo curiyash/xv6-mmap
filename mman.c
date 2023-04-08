@@ -9,11 +9,17 @@ int main(int argc, char *argv[]){
 	void *addr = 0;
 	unsigned int length = 8192;
 	int prot=PROT_READ | PROT_WRITE, flags=0, fd=0, offset=0;
+	printf(1, "Hola\n");
 
 	fd = open("README", O_RDWR);
+	char c[2];
+
+	read(fd, &c[0], 1);
+	c[1] = '\0';
+	printf(1, "char: %s\n", c);
 
 	char *ret = (char *) mmap(addr, length, prot, flags, fd, offset);
-	// close(fd);
+	close(fd);
 	if (ret!=(char *) 0xffffffff){
 		printf(1, "call to mmap succeeded %x %c\n", ret, ret[0]);
 	}

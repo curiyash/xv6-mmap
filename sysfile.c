@@ -471,10 +471,10 @@ int sys_munmap(void){
 	int length;
 
 	if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
-    cprintf("Ghol\n");
+    // cprintf("Ghol\n");
     return -1;
   }
-	cprintf("%p %d\n", addr, length);
+	// cprintf("%p %d\n", addr, length);
   munmap_helper(addr, length);
 	return 0;
 }

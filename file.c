@@ -10,6 +10,8 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "mmu.h"
+#include "mman.h"
+#include "stat.h"
 
 struct devsw devsw[NDEV];
 struct {
@@ -97,17 +99,26 @@ filestat(struct file *f, struct stat *st)
 int
 fileread(struct file *f, char *addr, int n)
 {
-  int r;
+  int r = 0;
 
   if(f->readable == 0)
     return -1;
   if(f->type == FD_PIPE)
     return piperead(f->pipe, addr, n);
   if(f->type == FD_INODE){
-    ilock(f->ip);
-    if((r = readi(f->ip, addr, f->off, n)) > 0)
+    if (f->ip!=(struct inode *) 0x80110a24){
+      cprintf("Should read: %d %d\n", f->off, n);
+      int prot = f->readable?PROT_READ:0 | f->writable?PROT_WRITE:0;
+      struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
+      r = readFromPageCache(map, addr, f->off, n);
       f->off += r;
-    iunlock(f->ip);
+    } else{
+      cprintf("Type: %d\n", f->type);
+      ilock(f->ip);
+      if((r = readi(f->ip, addr, f->off, n)) > 0)
+        f->off += r;
+      iunlock(f->ip);
+    }
     return r;
   }
   panic("fileread");
