@@ -17,11 +17,12 @@ int main(int argc, char *argv[]){
 	read(fd, &c[0], 1);
 	c[1] = '\0';
 	printf(1, "char: %s\n", c);
+	write(fd, &c[0], 1);
 
 	char *ret = (char *) mmap(addr, length, prot, flags, fd, offset);
 	close(fd);
 	if (ret!=(char *) 0xffffffff){
-		printf(1, "call to mmap succeeded %x %c\n", ret, ret[0]);
+		printf(1, "call to mmap succeeded %x %c %c\n", ret, ret[0], ret[1]);
 	}
 	// int stat = munmap((void *) ret, 4096);
 	// if (stat==0){

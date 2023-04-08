@@ -146,8 +146,9 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
 
 int readFromPageCache(struct legend2 *m, char *addr, int offset, int length);
 
-struct legend2 *findInCache(struct file *f);
+int writeToPageCache(struct legend2 *map, char *addr, int offset, int length);
 
+struct legend2 *findInCache(struct file *f);
 
 // Task state segment format
 struct taskstate {

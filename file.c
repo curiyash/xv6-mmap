@@ -150,10 +150,23 @@ filewrite(struct file *f, char *addr, int n)
         n1 = max;
 
       begin_op();
-      ilock(f->ip);
-      if ((r = writei(f->ip, addr + i, f->off, n1)) > 0)
-        f->off += r;
-      iunlock(f->ip);
+
+      if (f->ip != (struct inode *) 0x80110a24){
+        // If not found in cache, readIntoPageCache and write to page cache
+        // readIntoPageCache basically makes sure that the page will be in the cache
+        // writeToPageCache makes sure that only the page cache is written to and nothing else
+        cprintf("Should write: %d %d\n", f->off, n);
+        int prot = f->readable?PROT_READ:0 | f->writable?PROT_WRITE:0;
+        struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
+        // You should have gotten the appropriate pages into your page cache by now
+        r = writeToPageCache(map, addr, f->off, n1);
+      } else{
+        ilock(f->ip);
+        if ((r = writei(f->ip, addr + i, f->off, n1)) > 0)
+          f->off += r;
+        iunlock(f->ip);
+      }
+
       end_op();
 
       if(r < 0)

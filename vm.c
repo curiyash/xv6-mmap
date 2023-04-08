@@ -725,6 +725,41 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
   return m;
 }
 
+int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
+  // Length doesn't exceed 512 * (MAXOPBLOCKS-1-1-2) = 512 * 3. That is guaranteed. So we would be only writing to atmost 2 pages
+  // pagePointer points to the location we will be writing to. Written keeps track of the number of bytes written since the beginning. currentEndOfPage keeps track of the number of bytes to write to the current page
+  char *pagePointer;
+  int pageIndex, toWrite, canWrite;
+
+  pageIndex = PGROUNDDOWN(offset);
+  toWrite = length;
+  // How many maximum bytes can you write on the current page?
+    // If offset = 0, write = 512 then can write = 4096 bytes
+      // towrite = 512, so we can
+    // If offset = 3584, write = 1024 then can write = 512 bytes
+      // 512 are written and towrite becomes 512
+      // Shift to the next page
+      // offset = 0, write = 512, canwrite = 4096 bytes
+      // 512 are written, towrite becomes 0
+  offset = offset % PGSIZE;
+  while (toWrite){
+    pagePointer = map->physicalPages[pageIndex] + offset;
+    if (!pagePointer){
+      panic("Unmapped\n");
+    }
+    canWrite = min(toWrite, PGSIZE - offset);
+
+    memmove(pagePointer, addr, canWrite);
+
+    toWrite = toWrite - canWrite;
+    offset  = (offset + canWrite) % PGSIZE;
+    addr    = addr + canWrite;
+    pageIndex++;
+  }
+
+  return length;
+}
+
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
   struct proc *currproc = myproc();
   struct legend2 *m = 0;
