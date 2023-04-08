@@ -577,64 +577,55 @@ void freeVMA(struct mmapInfo *vma){
 }
 
 int readFromPageCache(struct legend2 *m, char *addr, int offset, int length){
-  if (!addr){
-    return 0;
-  }
+  // Reworking the entire code to behave like writeToPageCache
+  // So the issue is that ls reads an inode of 512 bytes, which doesn't actually contain 512 bytes but some 364 or something
+  // Now, read should stop once we reach the file size
+  // So, we check which page does the last byte belong to
+  // If we are on the current page, then we can atmost read sz bytes from the page, so you should consider that too
+  char *pagePointer;
+  int pageIndex, toRead, canRead, fileLastPage, lastPageBytes;
+
+  cprintf("Offset: %d | Length: %d | File size: %d\n", offset, length, m->f->ip->size);
+
   if (offset >= m->f->ip->size){
     return 0;
   }
-  int fromPage = PGROUNDDOWN(offset) / PGSIZE;
-  int lastPage = PGROUNDDOWN(offset + length) / PGSIZE;
 
-  if ( (offset + length) % PGSIZE == 0){
-    lastPage--;
-  }
+  pageIndex = PGROUNDDOWN(offset) / PGSIZE;
+  fileLastPage = PGROUNDDOWN(m->f->ip->size) / PGSIZE;
+  lastPageBytes = (m->f->ip->size) % PGSIZE;
+  toRead = length;
 
-  // cprintf("fromPage: %d | lastPage: %d | %d %d\n", fromPage, lastPage, offset, length);
+  offset = offset % PGSIZE;
 
-  if (!m->physicalPages[fromPage]){
-      panic("Page was not allocated\n");
-  }
+  while (toRead){
+    pagePointer = m->physicalPages[pageIndex] + offset;
 
-  char *copyFrom = m->physicalPages[fromPage] + (offset - PGROUNDDOWN(offset));
-  int copy = length;
-  // cprintf("%d %d %d\n", length, PGSIZE - offset, m->f->ip->size);
-  // cprintf("Copying from: %x %d bytes\n", copyFrom, copy);
-
-  memmove(addr, copyFrom, copy);
-  if (addr[0] == '\0'){
-    return 0;
-  }
-
-  uint a = copy;
-
-  for (int i = fromPage+1; i < lastPage; i++){
-    if (!m->physicalPages[i]){
-      panic("Page was not allocated\n");
+    if (!pagePointer){
+      panic("Unmapped\n");
     }
-    memmove(addr + a, m->physicalPages[i], PGSIZE);
-    if (addr[a] == '\0'){
-      return 0;
+
+    canRead = min(toRead, PGSIZE - offset);
+    if (pageIndex == fileLastPage){
+      canRead = min(canRead, lastPageBytes);
     }
-    a += PGSIZE;
+    memmove(addr, pagePointer, canRead);
+    if (addr[0]=='\0'){
+      break;
+    }
+
+    toRead = toRead - canRead;
+    offset = (offset + canRead) % PGSIZE;
+
+    if (offset + PGSIZE*pageIndex > m->f->ip->size){
+      break;
+    }
+
+    addr = addr + canRead;
+    pageIndex++;
   }
 
-  if (lastPage!=fromPage){
-    int rem = length - PGROUNDDOWN(offset+length);
-    // cprintf("rem: %d\n", rem);
-
-    if (!m->physicalPages[lastPage]){
-        panic("Page was not allocated\n");
-    }
-    memmove(addr+a, m->physicalPages[lastPage], rem);
-
-    // cprintf("Done copying: %d\n", length);
-
-    if (addr[0] == '\0'){
-      return 0;
-    }
-  }
-  return length;
+  return length - toRead;
 }
 
 int mmapdeallocuvm(pde_t *pgdir, uint oldsz, uint newsz){
@@ -731,7 +722,11 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
   char *pagePointer;
   int pageIndex, toWrite, canWrite;
 
-  pageIndex = PGROUNDDOWN(offset);
+  if (offset > map->f->ip->size){
+    return 0;
+  }
+
+  pageIndex = PGROUNDDOWN(offset) / PGSIZE;
   toWrite = length;
   // How many maximum bytes can you write on the current page?
     // If offset = 0, write = 512 then can write = 4096 bytes
@@ -753,11 +748,16 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
 
     toWrite = toWrite - canWrite;
     offset  = (offset + canWrite) % PGSIZE;
+
+    if (offset + PGSIZE*pageIndex > map->f->ip->size){
+      break;
+    }
+
     addr    = addr + canWrite;
     pageIndex++;
   }
 
-  return length;
+  return length - toWrite;
 }
 
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
