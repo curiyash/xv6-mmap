@@ -717,16 +717,19 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
 }
 
 int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
+  // Currently, cannot extend the file
   // Length doesn't exceed 512 * (MAXOPBLOCKS-1-1-2) = 512 * 3. That is guaranteed. So we would be only writing to atmost 2 pages
   // pagePointer points to the location we will be writing to. Written keeps track of the number of bytes written since the beginning. currentEndOfPage keeps track of the number of bytes to write to the current page
   char *pagePointer;
-  int pageIndex, toWrite, canWrite;
+  int pageIndex, toWrite, canWrite, fileLastPage, lastPageBytes;
 
   if (offset > map->f->ip->size){
     return 0;
   }
 
   pageIndex = PGROUNDDOWN(offset) / PGSIZE;
+  fileLastPage = PGROUNDDOWN(map->f->ip->size) / PGSIZE;
+  lastPageBytes = (map->f->ip->size) % PGSIZE;
   toWrite = length;
   // How many maximum bytes can you write on the current page?
     // If offset = 0, write = 512 then can write = 4096 bytes
@@ -743,7 +746,9 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
       panic("Unmapped\n");
     }
     canWrite = min(toWrite, PGSIZE - offset);
-
+    if (fileLastPage == pageIndex){
+      canWrite = min(canWrite, lastPageBytes);
+    }
     memmove(pagePointer, addr, canWrite);
 
     toWrite = toWrite - canWrite;
