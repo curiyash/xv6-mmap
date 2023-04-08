@@ -77,6 +77,37 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
+  case T_PGFLT:
+    cprintf("Faulted on 0x%x\n", rcr2());
+    char *faultedOn = (char *) rcr2();
+    struct mmapInfo *m = 0;
+    struct proc *currproc = myproc();
+    
+    for (int i=0; i<NOMAPS; i++){
+      struct mmapInfo *map = currproc->maps[i];
+      // if (map){
+      //   cprintf("%d 0x%x-0x%x \t %d pages from %d\n", map->valid, map->start, map->end, map->numPages, map->firstPageIndex);
+      // } else{
+      //   cprintf("Empty\n");
+      // }
+      if (map && map->start <= faultedOn && faultedOn < map->end){
+        cprintf("Go ahead and check\n");
+        m = map;
+        break;
+      }
+    }
+
+    // If payheed, then only handle, else this is not what we are capable of
+    if (m){
+      // If the page fault occurs on a map, it is either that the page isn't present (that is, on-demand page loading) or we are writing to a read-only page
+      // We are writing to a read-only page
+      handleMapFault(currproc->pgdir, faultedOn, m);
+      lcr3(( (uint) currproc->pgdir ) - KERNBASE);
+      break;
+    } else{
+    }
+    exit();
+    break;
 
   //PAGEBREAK: 13
   default:

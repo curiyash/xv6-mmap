@@ -106,7 +106,8 @@ fileread(struct file *f, char *addr, int n)
   if(f->type == FD_PIPE)
     return piperead(f->pipe, addr, n);
   if(f->type == FD_INODE){
-    if (f->ip!=(struct inode *) 0x80110a24){
+    cprintf("Read called\n");
+    if (f->ip!=(struct inode *) 0x80111a24){
       cprintf("Should read: %d %d\n", f->off, n);
       int prot = f->readable?PROT_READ:0 | f->writable?PROT_WRITE:0;
       struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
@@ -150,8 +151,7 @@ filewrite(struct file *f, char *addr, int n)
         n1 = max;
 
       begin_op();
-
-      if (f->ip != (struct inode *) 0x80110a24){
+      if (f->ip != (struct inode *) 0x80111a24){
         // If not found in cache, readIntoPageCache and write to page cache
         // readIntoPageCache basically makes sure that the page will be in the cache
         // writeToPageCache makes sure that only the page cache is written to and nothing else

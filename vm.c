@@ -10,6 +10,7 @@
 #include "elf.h"
 #include "fs.h"
 #include "file.h"
+#include "mman.h"
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
@@ -424,8 +425,22 @@ char *extend(struct proc *p, uint oldsz, uint newsz){
   return (char *) oldsz;
 }
 
+// Print all the maps of the process
+void unfoldMaps(){
+  struct proc *currproc = myproc();
+
+  for (int i=0; i<NOMAPS; i++){
+    struct mmapInfo *map = currproc->maps[i];
+    cprintf("%d 0x%x-0x%x \t %d pages from %d \t %x\n", map->start, map->end, map->numPages, map->firstPageIndex, map->pages->f->ip);
+  }
+}
+
+void mmapCopyUvm(pde_t *pgdir, struct mmapInfo *vma){
+
+}
+
 // VMA carries the entire information of how we want to map the pages
-int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma){
+int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma, int reload){
   char *mem;
   uint a;
   int mappingPagesFrom;
@@ -436,22 +451,31 @@ int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma){
   a = (uint) vma->start;
 
   for(; a < (uint) vma->end; a += PGSIZE){
-    if (!m->physicalPages[mappingPagesFrom]){
+    if (reload || !m->physicalPages[mappingPagesFrom]){
       mem = kalloc();
       if(mem == 0){
         cprintf("allocuvm out of memory\n");
         deallocuvm(pgdir, (uint) vma->end, (uint) vma->start);
         return -1;
       }
+    }
+    if (reload){
+      cprintf("Reloading\n");
+      pte_t *pte;
+      if ( (pte = walkpgdir(pgdir, (void *) a, 0)) == 0){
+        panic("Drunken walk\n");
+      }
+      *pte = 0;
+      memmove(mem, m->physicalPages[mappingPagesFrom], PGSIZE);
+    }
+    if (!reload && !m->physicalPages[mappingPagesFrom]){
       memset(mem, 0, PGSIZE);
       m->physicalPages[mappingPagesFrom] = mem;
-      // cprintf("1: %x\n", mem);
-    } else{
+    } else if (!reload && m->physicalPages[mappingPagesFrom]){
       mem = m->physicalPages[mappingPagesFrom];
-      // cprintf("2: %x\n", mem);
     }
     cprintf("Allocating page %x for %x\n", mem, a);
-    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), vma->actualFlags) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, (uint) vma->end, (uint) vma->start);
       kfree(mem);
@@ -461,6 +485,29 @@ int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma){
   }
 
   return 0;
+}
+
+void handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
+  pte_t *pte;
+  cprintf("Handling\n");
+  if (( pte = walkpgdir(pgdir, (void *) addr, 0)) == 0){
+    panic("Something's wrong");
+  }
+  if (*pte & PTE_P){
+    if (*pte & PTE_W){
+      panic("There shouldn't have been any fault\n");
+    } else{
+      cprintf("Read-only page 0x%x-0x%x\n", vma->start, vma->end);
+      // 1. Alloc new pages over the same range
+      // 2. Clear the initial page table entries with correct permissions
+      vma->actualFlags |= PTE_W;
+      mmapAllocUvm(pgdir, vma->pages, vma, 1);
+      // 3. Flush TLB: Reload the base register cr3
+      // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
+    }
+  } else{
+    cprintf("The page was not present\n");
+  }
 }
 
 struct legend2 *mmapAlloc(){
@@ -474,9 +521,7 @@ struct legend2 *mmapAlloc(){
 
 struct mmapInfo *mmapAssign(struct legend2 *m, char *start, int offset, int length, int prot, int flags){
   int numPages = (PGROUNDUP(offset + length) - offset) / PGSIZE;
-  // cprintf("Number of pages: %d\n", numPages);
 
-  // Allocate a struct mmapInfo
   struct mmapInfo *mI = 0;
   for (int i=0; i<NMAPS; i++){
     if (mtable.info[i].valid==0){
@@ -493,6 +538,14 @@ struct mmapInfo *mmapAssign(struct legend2 *m, char *start, int offset, int leng
   mI->numPages = numPages;
   mI->prot = prot;
   mI->flags = flags;
+
+  // If MAP_PRIVATE is present, mark the page as read-only. When page fault occurs, then we'll decide if the page was actually writable or not using the prot field
+  if (flags & MAP_PRIVATE){
+    cprintf("This should be marked as read-only\n");
+    mI->actualFlags = PTE_P | PTE_U;
+  } else{
+    mI->actualFlags = PTE_P | PTE_W | PTE_U;
+  }
 
   return mI;
 }
@@ -512,7 +565,7 @@ void printInfo(struct legend2 *m){
 }
 
 // Map the pages into struct legend2 only if they could be loaded
-int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m){
+int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reload){
   // pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz
   // cprintf("Offset: %d | i: %d | offset + i: %d\n", offset, i, offset + i);a
   uint i, pa, n, sz, offset;
@@ -690,7 +743,7 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
 
   // Allocate PTEs
   int status;
-  if (( status = mmapAllocUvm(currproc->pgdir, m, vma)) <0 ){
+  if (( status = mmapAllocUvm(currproc->pgdir, m, vma, 0)) <0 ){
     cprintf("Couldn't allocate\n");
     return 0;
   }
@@ -701,7 +754,7 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
   cprintf("Loading...\n");
 
   ilock(m->f->ip);
-  if (( written = mmapLoadUvm(currproc->pgdir, m, vma)) < 0){
+  if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0)) < 0){
     // cprintf("Loading failed\n");
     iunlock(m->f->ip);
     return 0;
@@ -817,7 +870,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
   // Allocate PTEs
   int status;
-  if (( status = mmapAllocUvm(currproc->pgdir, m, vma)) <0 ){
+  if (( status = mmapAllocUvm(currproc->pgdir, m, vma, 0)) <0 ){
     cprintf("Couldn't allocate\n");
     return (void *) 0xffffffff;
   }
@@ -829,7 +882,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   // cprintf("Loading...\n");
 
   ilock(m->f->ip);
-  if (( written = mmapLoadUvm(currproc->pgdir, m, vma)) < 0){
+  if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0)) < 0){
     cprintf("Loading failed\n");
     iunlock(m->f->ip);
     return (void *) 0xffffffff;

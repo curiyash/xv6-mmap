@@ -134,6 +134,7 @@ struct mmapInfo{
   int flags;
   struct legend2 *pages;
   int valid;
+  int actualFlags;
 };
 
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
@@ -147,6 +148,10 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
 int readFromPageCache(struct legend2 *m, char *addr, int offset, int length);
 
 int writeToPageCache(struct legend2 *map, char *addr, int offset, int length);
+
+void unfoldMaps();
+
+void handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma);
 
 struct legend2 *findInCache(struct file *f);
 

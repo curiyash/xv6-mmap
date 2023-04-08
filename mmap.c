@@ -5,12 +5,28 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 int main(){
     int fd = open("README", O_RDWR);
-    char *addr = (char *) mmap(0, 12, PROT_READ, MAP_SHARED, fd, 0);
-    char *addr2 = (char *) mmap(0, 12, PROT_READ, MAP_SHARED, fd, 0);
-    printf("%x %x %d\n", addr, addr2, getpid());
-    sleep(100);
+    // Create a MAP_PRIVATE map
+    // Change something
+    // Is it visible to the child? Yes
+    // Is change in child visible to the parent
+    char *ret = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    printf("char: %c\n", ret[0]);
+    ret[0] = 'y';
+    printf("char: %c\n", ret[0]);
+    if (fork() == 0){
+        // Child
+        printf("In child, char: %c\n", ret[0]);
+        printf("In child, char: %c\n", ret[1]);
+        ret[1] = 'z';
+        printf("In child, char: %c\n", ret[1]);
+    } else{
+        wait(0);
+        printf("In parent, char: %c\n", ret[0]);
+        printf("In parent, char: %c\n", ret[1]);
+    }
     return 0;
 }
