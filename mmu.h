@@ -96,7 +96,8 @@ struct segdesc {
 #define PTE_W           0x002   // Writeable
 #define PTE_U           0x004   // User
 #define PTE_PS          0x080   // Page Size
-#define PTE_AVL         0xa00   // AVL bits for use in copyuvm
+#define PTE_AVL         0x0a00   // AVL bits for use in copyuvm
+#define PTE_ANON        0x0400   // Mark the page as ANON
 
 // Address in page table or page directory entry
 #define PTE_ADDR(pte)   ((uint)(pte) & ~0xFFF)
@@ -126,6 +127,11 @@ struct legend2{
   int mapRef;
 };
 
+struct anon{
+  char *physicalPages[3];
+  int ref;
+};
+
 struct mmapInfo{
   char *start;
   char *end;
@@ -134,6 +140,7 @@ struct mmapInfo{
   int prot;
   int flags;
   struct legend2 *pages;
+  struct anon *anonMaps;
   int valid;
   int actualFlags;
 };

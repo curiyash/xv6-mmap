@@ -21,6 +21,10 @@ struct {
 } mmapCache;
 
 struct {
+  struct anon anonMaps[NMAPS];
+} anonCache;
+
+struct {
   struct mmapInfo info[NMAPS];
 } mtable;
 
@@ -373,7 +377,7 @@ copyuvm(pde_t *pgdir, uint sz)
           panic("copyuvm: page not present");
         }
         *pte |= PTE_AVL;
-        *pte &= 0xfffffff0;
+        *pte &= ~PTE_P;
       }
     }
   }
@@ -386,6 +390,7 @@ copyuvm(pde_t *pgdir, uint sz)
           cprintf("#################################\n");
           cprintf("Sharing pages...\n");
           *pte |= PTE_P;
+          *pte &= ~PTE_AVL;
           continue;
       }
       panic("copyuvm: page not present");
@@ -456,11 +461,14 @@ char *extend(struct proc *p, uint oldsz, uint newsz){
 }
 
 struct mmapInfo *mmapdup(struct mmapInfo *m){
-  if (m->pages->f->ref < 1){
+  if (m->pages && m->pages->f->ref < 1){
     panic("filedup");
+  } else if (m->pages){
+    m->pages->f->ref++;
+    m->pages->mapRef++;
+  } else{
+    m->anonMaps->ref++;
   }
-  m->pages->f->ref++;
-  m->pages->mapRef++;
   return m;
 }
 
@@ -479,10 +487,21 @@ void mmapCopyUvm(pde_t *pgdir, struct mmapInfo *vma){
 }
 
 // VMA carries the entire information of how we want to map the pages
-int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma, int reload){
+int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
   char *mem;
   uint a;
   int mappingPagesFrom;
+  struct legend2 *m = vma->pages;
+  struct anon *am = vma->anonMaps;
+  char **physicalPages = 0;
+
+  if (m){
+    physicalPages = m->physicalPages;
+  } else if (am){
+    physicalPages = am->physicalPages;
+  } else{
+    panic("Incorrect VMA");
+  }
 
   mappingPagesFrom = vma->firstPageIndex;
   // cprintf("first page index: %d\n", vma->firstPageIndex);
@@ -490,7 +509,7 @@ int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma, int relo
   a = (uint) vma->start;
 
   for(; a < (uint) vma->end; a += PGSIZE){
-    if (reload || !m->physicalPages[mappingPagesFrom]){
+    if (reload || !physicalPages[mappingPagesFrom]){
       mem = kalloc();
       if(mem == 0){
         cprintf("allocuvm out of memory\n");
@@ -505,13 +524,13 @@ int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma, int relo
         panic("Drunken walk\n");
       }
       *pte = 0;
-      memmove(mem, m->physicalPages[mappingPagesFrom], PGSIZE);
+      memmove(mem, physicalPages[mappingPagesFrom], PGSIZE);
     }
-    if (!reload && !m->physicalPages[mappingPagesFrom]){
+    if (!reload && !physicalPages[mappingPagesFrom]){
       memset(mem, 0, PGSIZE);
-      m->physicalPages[mappingPagesFrom] = mem;
-    } else if (!reload && m->physicalPages[mappingPagesFrom]){
-      mem = m->physicalPages[mappingPagesFrom];
+      physicalPages[mappingPagesFrom] = mem;
+    } else if (!reload && physicalPages[mappingPagesFrom]){
+      mem = physicalPages[mappingPagesFrom];
     }
     cprintf("Allocating page %x for %x\n", mem, a);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), vma->actualFlags) < 0){
@@ -535,7 +554,7 @@ struct legend2 *mmapAlloc(){
   return 0;
 }
 
-struct mmapInfo *mmapAssign(struct legend2 *m, char *start, int offset, int length, int prot, int flags){
+struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int offset, int length, int prot, int flags){
   int numPages = (PGROUNDUP(offset + length) - offset) / PGSIZE;
 
   struct mmapInfo *mI = 0;
@@ -554,12 +573,14 @@ struct mmapInfo *mmapAssign(struct legend2 *m, char *start, int offset, int leng
   mI->numPages = numPages;
   mI->prot = prot;
   mI->flags = flags;
+  mI->anonMaps = am;
 
   // If MAP_PRIVATE is present, mark the page as read-only. When page fault occurs, then we'll decide if the page was actually writable or not using the prot field
   if (flags & MAP_PRIVATE){
     cprintf("This should be marked as read-only\n");
     mI->actualFlags = PTE_P | PTE_U;
   } else{
+    cprintf("Marked as writable\n");
     mI->actualFlags = PTE_P | PTE_W | PTE_U;
   }
 
@@ -753,13 +774,13 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
   newSz = PGROUNDUP(length);
   start = extend(currproc, currproc->sz, newSz);
 
-  struct mmapInfo *vma = mmapAssign(m, start, offset, length, prot, flags);
+  struct mmapInfo *vma = mmapAssign(m, 0, start, offset, length, prot, flags);
 
   // Use the VMA
 
   // Allocate PTEs
   int status;
-  if (( status = mmapAllocUvm(currproc->pgdir, m, vma, 0)) <0 ){
+  if (( status = mmapAllocUvm(currproc->pgdir, vma, 0)) <0 ){
     cprintf("Couldn't allocate\n");
     return 0;
   }
@@ -838,32 +859,74 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   // Anonymous Maps aren't cached, do you need to?
   // Process calls MAP_ANON and MAP_SHARED, you note this in the struct proc
 
+  // Argument checking
+  // Cannot be both SHARED and PRIVATE
+  if (flags & MAP_SHARED & MAP_PRIVATE){
+    cprintf("Baa baa\n");
+    return (void *) 0xffffffff;
+  }
+
+  if (fd == 0 && (flags & MAP_ANONYMOUS)){
+    cprintf("A map anonymous case\n");
+  } else if (fd < 2 || fd >= NOFILE){
+    cprintf("Baa boo\n");
+    return (void *) 0xffffffff;
+  }
+
+  // If you want to share MAP_ANON, then you only need to create mmapInfo and don't need to keep track of it
+
+  // It can only be either MAP_SHARED | MAP_ANON or MAP_PRIVATE | MAP_ANON or only MAP_SHARED or MAP_PRIVATE
+  // MAP_ANON just means that it isn't file backed and the only way to share it is with a child, or as a pointer?
+
   // ========================================SIGN THE AGREEMENT=============================================
 
   struct proc *currproc = myproc();
   struct legend2 *m = 0;
-  offset = PGROUNDDOWN(offset);
-
+  struct anon *anonMap = 0;
   struct file *f = currproc->ofile[fd];
 
-  // Find in the global cache
-  m = findInCache(f);
+  if (!(flags & MAP_ANONYMOUS)){
+    offset = PGROUNDDOWN(offset);
 
-  if (!m && ((m = mmapAlloc()) == 0)){
-    cprintf("Call a geographer: I'm out of maps!\n");
-    return (void *) 0xffffffff;
-  }
 
-  m->f = currproc->ofile[fd];
-  m->mapRef++;
-  m->mapRef++;
-  // m->f->ref++;
-  // cprintf("ref: %d\n", m->f->ref);
+    // Find in the global cache
+    m = findInCache(f);
 
-  // Check if fd prot and map prot are compatible
-  int fileProt = m->f->readable?1:0 | m->f->writable?2:0;
-  if ( (fileProt & prot) == 0){
-    return (void *) 0xffffffff;
+    if (!m && ((m = mmapAlloc()) == 0)){
+      cprintf("Call a geographer: I'm out of maps!\n");
+      return (void *) 0xffffffff;
+    }
+
+    m->f = currproc->ofile[fd];
+    m->mapRef++;
+    m->mapRef++;
+    // m->f->ref++;
+    // cprintf("ref: %d\n", m->f->ref);
+
+    // Check if fd prot and map prot are compatible
+    int fileProt = m->f->readable?1:0 | m->f->writable?2:0;
+    if ( (fileProt & prot) == 0){
+      cprintf("Here\n");
+      return (void *) 0xffffffff;
+    }
+  } else{
+    // This is anonymous mapping
+    // Get a struct anon from anonCache
+    for (int i=0; i<NOMAPS; i++){
+      if (anonCache.anonMaps->ref == 0){
+        anonMap = &anonCache.anonMaps[i];
+        break;
+      }
+    }
+
+    if (!anonMap){
+      cprintf("Trouble\n");
+      return (void *) 0xffffffff;
+    }
+
+    anonMap->ref++;
+    anonMap->ref++;
+    offset = 0;
   }
 
   // Extend the process size if necessary - you could check if such a mapping already exists in the process address space (not doing this currently)
@@ -873,7 +936,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   newSz = PGROUNDUP(length);
   start = extend(currproc, currproc->sz, newSz);
 
-  struct mmapInfo *vma = mmapAssign(m, start, offset, length, prot, flags);
+  struct mmapInfo *vma = mmapAssign(m, anonMap, start, offset, length, prot, flags);
 
   // Assign to the process
   for (int i=0; i<NOMAPS; i++){
@@ -886,6 +949,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
       // cprintf("%x %x %x %d %d\n", vma->start, vma->end, vma->pages, vma->numPages, vma->valid);
     }
   }
+  cprintf("Given: %x\n", vma->start);
   return vma->start;
 }
 
@@ -976,13 +1040,15 @@ int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
       panic("There shouldn't have been any fault\n");
     } else{
       cprintf("Read-only page 0x%x-0x%x\n", vma->start, vma->end);
-      // 1. Alloc new pages over the same range
-      // 2. Clear the initial page table entries with correct permissions
-      vma->actualFlags |= PTE_W;
-      mmapAllocUvm(pgdir, vma->pages, vma, 1);
-      // 3. Flush TLB: Reload the base register cr3
-      // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
-      return 0;
+      if (vma->prot & PROT_WRITE){
+        // 1. Alloc new pages over the same range
+        // 2. Clear the initial page table entries with correct permissions
+        vma->actualFlags |= PTE_W;
+        mmapAllocUvm(pgdir, vma, 1);
+        // 3. Flush TLB: Reload the base register cr3
+        // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
+        return 0;
+      }
     }
   } else{
     cprintf("The page was not present\n");
@@ -991,29 +1057,27 @@ int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
 
     // Allocate PTEs
     int status;
-    if (( status = mmapAllocUvm(pgdir, m, vma, 0)) <0 ){
+    if (( status = mmapAllocUvm(pgdir, vma, 0)) < 0 ){
       cprintf("Couldn't allocate\n");
       // return (void *) 0xffffffff;
       return -1;
     }
 
-    // Load the pages
-      // Use the struct legend and the vma to figure out which pages are needed and load only the necessary pages
-    int written;
-
     // cprintf("Loading...\n");
-
-    ilock(m->f->ip);
-    if (( written = mmapLoadUvm(pgdir, m, vma, 0)) < 0){
-      cprintf("Loading failed\n");
+    if (!(vma->flags & MAP_ANONYMOUS)){
+      // Load the pages
+      int written;
+      ilock(m->f->ip);
+      if (( written = mmapLoadUvm(pgdir, m, vma, 0)) < 0){
+        cprintf("Loading failed\n");
+        iunlock(m->f->ip);
+        // return (void *) 0xffffffff;
+        return -1;
+      }
       iunlock(m->f->ip);
-      // return (void *) 0xffffffff;
-      return -1;
+    } else{
+      return 0;
     }
-    iunlock(m->f->ip);
-
-    printInfo(m);
-    return 0;
   }
   return -1;
 }

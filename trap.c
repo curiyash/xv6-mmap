@@ -104,14 +104,16 @@ trap(struct trapframe *tf)
       int status = handleMapFault(currproc->pgdir, faultedOn, m);
       if (status==0){
         lcr3(( (uint) currproc->pgdir ) - KERNBASE);
+        break;
       } else{
-        cprintf("I came outside\n");
         exit();
       }
       break;
     } else{
+      cprintf("Hello\n");
+      exit();
     }
-    exit();
+    // exit();
     break;
 
   //PAGEBREAK: 13

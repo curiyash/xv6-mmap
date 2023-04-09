@@ -215,8 +215,12 @@ fork(void)
       np->ofile[i] = filedup(curproc->ofile[i]);
   
   for(i = 0; i < NOMAPS; i++)
-    if(curproc->maps[i] && curproc->maps[i]->valid)
+    if(curproc->maps[i] && curproc->maps[i]->valid){
+      if (curproc->maps[i]->anonMaps){
+        cprintf("Anonymous %x\n", curproc->maps[i]->start);
+      }
       np->maps[i] = mmapdup(curproc->maps[i]);
+    }
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
@@ -268,11 +272,14 @@ exit(void)
   // cprintf("Exiting\n");
   for (md = 0; md<NOMAPS; md++){
     if (curproc->maps[md] && curproc->maps[md]->valid==1){
-      if (curproc->maps[md]->pages->mapRef>1){
+      if (curproc->maps[md]->pages && curproc->maps[md]->pages->mapRef>1){
         clear(curproc->pgdir, curproc->maps[md]);
-      } else{
+      } else if (curproc->maps[md]->pages){
         // Clear the struct out globally
         clearMap(curproc->maps[md]->pages);
+      }
+      if (curproc->maps[md]->anonMaps && curproc->maps[md]->anonMaps->ref > 1){
+        clear(curproc->pgdir, curproc->maps[md]);
       }
       curproc->maps[md]--;
       curproc->maps[md]->valid = 0;

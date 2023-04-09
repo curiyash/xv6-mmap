@@ -8,41 +8,30 @@ int main(int argc, char *argv[]){
 	// declare and define all params
 	void *addr = 0;
 	unsigned int length = 8192;
-	int prot=PROT_READ | PROT_WRITE, flags=MAP_SHARED, fd=0, offset=0;
+	int prot=PROT_READ | PROT_WRITE, flags=MAP_ANONYMOUS | MAP_SHARED, fd=0, offset=0;
 	printf(1, "Hola\n");
 
-	fd = open("README", O_RDWR);
-	// char c[2];
+	// fd = open("README", O_RDWR);
 
-	// read(fd, &c[0], 1);
-	// c[1] = '\0';
-	// printf(1, "char: %s\n", c);
-	// write(fd, &c[0], 1);
+	// Idea is to map as MAP_ANON
+	char *ret = mmap(addr, length, prot, flags, fd, offset);
 
-	printf(1, "This should cause a page fault\n");
-	
-	char *ret = (char *) mmap(addr, length, prot, flags, fd, offset);
-	if (ret!=(char *) 0xffffffff){
-		printf(1, "call to mmap succeeded %x %c %c\n", ret, ret[0], ret[8191]);
+	if (ret[0]=='\0'){
+		printf(1, "Successful map\n");
 	}
+	ret[0] = 'q';
 
 	if (fork() == 0){
-		printf(1, "In child. Causing page fault...\n");
-		printf(1, "char: %c\n", ret[0]);
+		printf(1, "In child\n");
+		if (ret[0]=='q'){
+			printf(1, "Successful map\n");
+		}
+		ret[0] = 'a';
 	} else{
 		wait();
-		printf(1, "In parent\n");
+		printf(1, "In parent %c\n", ret[0]);
 	}
-	
-	// ret[0] = 'b';
-	// printf(1, "call to mmap succeeded %x %c %c\n", ret, ret[0], ret[1]);
-	// read(fd, &c[0], 1);
-	// c[1] = '\0';
-	// printf(1, "char: %c\n", c[0]);
-	// // int stat = munmap((void *) ret, 4096);
-	// // if (stat==0){
-	// // 	printf(1, "call to munmap succeeded %x\n", ret);
-	// // }asd
+
 	close(fd);
 	exit();
 }
