@@ -101,8 +101,13 @@ trap(struct trapframe *tf)
     if (m){
       // If the page fault occurs on a map, it is either that the page isn't present (that is, on-demand page loading) or we are writing to a read-only page
       // We are writing to a read-only page
-      handleMapFault(currproc->pgdir, faultedOn, m);
-      lcr3(( (uint) currproc->pgdir ) - KERNBASE);
+      int status = handleMapFault(currproc->pgdir, faultedOn, m);
+      if (status==0){
+        lcr3(( (uint) currproc->pgdir ) - KERNBASE);
+      } else{
+        cprintf("I came outside\n");
+        exit();
+      }
       break;
     } else{
     }

@@ -151,7 +151,7 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length);
 
 void unfoldMaps();
 
-void handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma);
+int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma);
 
 struct legend2 *findInCache(struct file *f);
 

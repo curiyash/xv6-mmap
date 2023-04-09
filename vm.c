@@ -487,29 +487,6 @@ int mmapAllocUvm(pde_t *pgdir, struct legend2 *m, struct mmapInfo *vma, int relo
   return 0;
 }
 
-void handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
-  pte_t *pte;
-  cprintf("Handling\n");
-  if (( pte = walkpgdir(pgdir, (void *) addr, 0)) == 0){
-    panic("Something's wrong");
-  }
-  if (*pte & PTE_P){
-    if (*pte & PTE_W){
-      panic("There shouldn't have been any fault\n");
-    } else{
-      cprintf("Read-only page 0x%x-0x%x\n", vma->start, vma->end);
-      // 1. Alloc new pages over the same range
-      // 2. Clear the initial page table entries with correct permissions
-      vma->actualFlags |= PTE_W;
-      mmapAllocUvm(pgdir, vma->pages, vma, 1);
-      // 3. Flush TLB: Reload the base register cr3
-      // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
-    }
-  } else{
-    cprintf("The page was not present\n");
-  }
-}
-
 struct legend2 *mmapAlloc(){
   for (int i=0; i<NMAPS; i++){
     if (mmapCache.maps[i].mapRef == 0){
@@ -819,6 +796,9 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
 }
 
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
+
+  // ========================================SIGN THE AGREEMENT=============================================
+
   struct proc *currproc = myproc();
   struct legend2 *m = 0;
   offset = PGROUNDDOWN(offset);
@@ -866,30 +846,32 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     }
   }
 
-  // Use the VMA
+  // =============================================NOW DO THE WORK===============================================
 
-  // Allocate PTEs
-  int status;
-  if (( status = mmapAllocUvm(currproc->pgdir, m, vma, 0)) <0 ){
-    cprintf("Couldn't allocate\n");
-    return (void *) 0xffffffff;
-  }
+  // // Use the VMA
 
-  // Load the pages
-    // Use the struct legend and the vma to figure out which pages are needed and load only the necessary pages
-  int written;
+  // // Allocate PTEs
+  // int status;
+  // if (( status = mmapAllocUvm(currproc->pgdir, m, vma, 0)) <0 ){
+  //   cprintf("Couldn't allocate\n");
+  //   return (void *) 0xffffffff;
+  // }
 
-  // cprintf("Loading...\n");
+  // // Load the pages
+  //   // Use the struct legend and the vma to figure out which pages are needed and load only the necessary pages
+  // int written;
 
-  ilock(m->f->ip);
-  if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0)) < 0){
-    cprintf("Loading failed\n");
-    iunlock(m->f->ip);
-    return (void *) 0xffffffff;
-  }
-  iunlock(m->f->ip);
+  // // cprintf("Loading...\n");
 
-  printInfo(m);
+  // ilock(m->f->ip);
+  // if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0)) < 0){
+  //   cprintf("Loading failed\n");
+  //   iunlock(m->f->ip);
+  //   return (void *) 0xffffffff;
+  // }
+  // iunlock(m->f->ip);
+
+  // printInfo(m);
   return vma->start;
 }
 
@@ -967,6 +949,59 @@ int munmap_helper(void *addr, unsigned int length){
 
   cprintf("munmap helper\n");
   return 0;
+}
+
+int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
+  pte_t *pte;
+  cprintf("Handling\n");
+  if (( pte = walkpgdir(pgdir, (void *) addr, 0)) == 0){
+    panic("Something's wrong");
+  }
+  if (*pte & PTE_P){
+    if (*pte & PTE_W){
+      panic("There shouldn't have been any fault\n");
+    } else{
+      cprintf("Read-only page 0x%x-0x%x\n", vma->start, vma->end);
+      // 1. Alloc new pages over the same range
+      // 2. Clear the initial page table entries with correct permissions
+      vma->actualFlags |= PTE_W;
+      mmapAllocUvm(pgdir, vma->pages, vma, 1);
+      // 3. Flush TLB: Reload the base register cr3
+      // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
+      return 0;
+    }
+  } else{
+    cprintf("The page was not present\n");
+    struct legend2 *m = vma->pages;
+    // Use the VMA
+
+    // Allocate PTEs
+    int status;
+    if (( status = mmapAllocUvm(pgdir, m, vma, 0)) <0 ){
+      cprintf("Couldn't allocate\n");
+      // return (void *) 0xffffffff;
+      return -1;
+    }
+
+    // Load the pages
+      // Use the struct legend and the vma to figure out which pages are needed and load only the necessary pages
+    int written;
+
+    // cprintf("Loading...\n");
+
+    ilock(m->f->ip);
+    if (( written = mmapLoadUvm(pgdir, m, vma, 0)) < 0){
+      cprintf("Loading failed\n");
+      iunlock(m->f->ip);
+      // return (void *) 0xffffffff;
+      return -1;
+    }
+    iunlock(m->f->ip);
+
+    printInfo(m);
+    return 0;
+  }
+  return -1;
 }
 
 void clear(pde_t *pgdir, struct mmapInfo *m){
