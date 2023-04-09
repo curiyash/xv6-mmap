@@ -389,7 +389,7 @@ copyuvm(pde_t *pgdir, uint sz)
       if (*pte & PTE_AVL){
           cprintf("#################################\n");
           cprintf("Sharing pages...\n");
-          *pte |= PTE_P;
+          *pte |=  PTE_P;
           *pte &= ~PTE_AVL;
           continue;
       }
@@ -494,6 +494,7 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
   struct legend2 *m = vma->pages;
   struct anon *am = vma->anonMaps;
   char **physicalPages = 0;
+  int anonFlag = 0;
 
   if (m){
     physicalPages = m->physicalPages;
@@ -510,6 +511,9 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
 
   for(; a < (uint) vma->end; a += PGSIZE){
     if (reload || !physicalPages[mappingPagesFrom]){
+      if (!physicalPages[mappingPagesFrom] && am){
+        anonFlag = PTE_W;
+      }
       mem = kalloc();
       if(mem == 0){
         cprintf("allocuvm out of memory\n");
@@ -533,7 +537,7 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
       mem = physicalPages[mappingPagesFrom];
     }
     cprintf("Allocating page %x for %x\n", mem, a);
-    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), vma->actualFlags) < 0){
+    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), vma->actualFlags | anonFlag) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, (uint) vma->end, (uint) vma->start);
       kfree(mem);
