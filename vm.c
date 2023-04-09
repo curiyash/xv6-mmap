@@ -352,23 +352,53 @@ copyuvm(pde_t *pgdir, uint sz)
 
   if((d = setupkvm()) == 0)
     return 0;
+  
+  // If this address lies in the range of a map, handle it by pointing mem to the correct page. Or best, don't map it only. Let it page fault. Ensure but pte is with correct permissions. Map Private should be marked as Read-only, that's it. Set the AVL bit to some value, we have three bits for the purpose. Let's set them to an alternating pattern of 101
+  // Actual flags of VMA never change, so processes can share VMAs as well. Need refCount on vma
+  // Nullify pte
+  struct proc *currproc = myproc();
+  for (int i=0; i<NOMAPS; i++){
+    struct mmapInfo *vma = currproc->maps[i];
+    // Get a new VMA, set the appropriate flags
+    if (vma && vma->valid){
+      // Get the pte, mark the AVL bits]
+      char *start = vma->start;
+      char *end = (char *) PGROUNDUP((uint) vma->end);
+      char *a = start;
+      for (; a < end; a += PGSIZE){
+        if ( (pte = walkpgdir(pgdir, a, 0)) == 0){
+          panic("copyuvm: pte should exist");
+        }
+        if (!(*pte & PTE_P)){
+          panic("copyuvm: page not present");
+        }
+        *pte |= PTE_AVL;
+        *pte &= 0xfffffff0;
+      }
+    }
+  }
+
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
+    if(!(*pte & PTE_P)){
+      if (*pte & PTE_AVL){
+          cprintf("#################################\n");
+          cprintf("Sharing pages...\n");
+          *pte |= PTE_P;
+          continue;
+      }
       panic("copyuvm: page not present");
+    }
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    // cprintf("Bad 1\n");
     if((mem = kalloc()) == 0)
       goto bad;
-    // cprintf("Bad 2\n");
     memmove(mem, (char*)P2V(pa), PGSIZE);
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
       kfree(mem);
       goto bad;
     }
-    // cprintf("Came till mappages just fine\n");
     cprintf("Copyuvm address: %x\n", P2V(PTE_ADDR(*pte)));
   }
   return d;
@@ -423,6 +453,15 @@ char *extend(struct proc *p, uint oldsz, uint newsz){
   // cprintf("newsz: %d\n", newsz);
   p->sz += newsz;
   return (char *) oldsz;
+}
+
+struct mmapInfo *mmapdup(struct mmapInfo *m){
+  if (m->pages->f->ref < 1){
+    panic("filedup");
+  }
+  m->pages->f->ref++;
+  m->pages->mapRef++;
+  return m;
 }
 
 // Print all the maps of the process
@@ -796,6 +835,8 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
 }
 
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
+  // Anonymous Maps aren't cached, do you need to?
+  // Process calls MAP_ANON and MAP_SHARED, you note this in the struct proc
 
   // ========================================SIGN THE AGREEMENT=============================================
 
@@ -845,33 +886,6 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
       // cprintf("%x %x %x %d %d\n", vma->start, vma->end, vma->pages, vma->numPages, vma->valid);
     }
   }
-
-  // =============================================NOW DO THE WORK===============================================
-
-  // // Use the VMA
-
-  // // Allocate PTEs
-  // int status;
-  // if (( status = mmapAllocUvm(currproc->pgdir, m, vma, 0)) <0 ){
-  //   cprintf("Couldn't allocate\n");
-  //   return (void *) 0xffffffff;
-  // }
-
-  // // Load the pages
-  //   // Use the struct legend and the vma to figure out which pages are needed and load only the necessary pages
-  // int written;
-
-  // // cprintf("Loading...\n");
-
-  // ilock(m->f->ip);
-  // if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0)) < 0){
-  //   cprintf("Loading failed\n");
-  //   iunlock(m->f->ip);
-  //   return (void *) 0xffffffff;
-  // }
-  // iunlock(m->f->ip);
-
-  // printInfo(m);
   return vma->start;
 }
 
@@ -1009,11 +1023,12 @@ void clear(pde_t *pgdir, struct mmapInfo *m){
   pte_t *pte;
 
   pte = walkpgdir(pgdir, m->start, 0);
-  if (!pte){
-    panic("Expected to be mapped\n");
-  }
   for (int i=0; i<m->numPages; i++){
     cprintf("Exit Address: %x %x\n", m->start, P2V(PTE_ADDR(*pte)));
+    if (!(*pte & PTE_P)){
+      cprintf("This page was never accessed\n");
+      continue;
+    }
     *pte = 0;
     pte++;
   }

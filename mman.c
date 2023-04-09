@@ -8,7 +8,7 @@ int main(int argc, char *argv[]){
 	// declare and define all params
 	void *addr = 0;
 	unsigned int length = 8192;
-	int prot=PROT_READ | PROT_WRITE, flags=MAP_PRIVATE, fd=0, offset=0;
+	int prot=PROT_READ | PROT_WRITE, flags=MAP_SHARED, fd=0, offset=0;
 	printf(1, "Hola\n");
 
 	fd = open("README", O_RDWR);
@@ -23,7 +23,15 @@ int main(int argc, char *argv[]){
 	
 	char *ret = (char *) mmap(addr, length, prot, flags, fd, offset);
 	if (ret!=(char *) 0xffffffff){
-		printf(1, "call to mmap succeeded %x %c %c\n", ret, ret[0], ret[1]);
+		printf(1, "call to mmap succeeded %x %c %c\n", ret, ret[0], ret[8191]);
+	}
+
+	if (fork() == 0){
+		printf(1, "In child. Causing page fault...\n");
+		printf(1, "char: %c\n", ret[0]);
+	} else{
+		wait();
+		printf(1, "In parent\n");
 	}
 	
 	// ret[0] = 'b';

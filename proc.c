@@ -192,6 +192,9 @@ fork(void)
     return -1;
   }
 
+  // Before copyuvm, there is no kvm: Would that affect us somehow?
+  // So, here's the thing, you reduce the process size as necessary. But can it be that something that the memory is like mmap | sbrk | mmap. Then we can't just reduce the process size. So do the necessary changes in copyuvm
+
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
@@ -210,6 +213,10 @@ fork(void)
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
+  
+  for(i = 0; i < NOMAPS; i++)
+    if(curproc->maps[i] && curproc->maps[i]->valid)
+      np->maps[i] = mmapdup(curproc->maps[i]);
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
