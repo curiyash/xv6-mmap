@@ -1045,6 +1045,7 @@ int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
         // 2. Clear the initial page table entries with correct permissions
         vma->actualFlags |= PTE_W;
         mmapAllocUvm(pgdir, vma, 1);
+        vma->actualFlags &= ~PTE_W;
         // 3. Flush TLB: Reload the base register cr3
         // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
         return 0;

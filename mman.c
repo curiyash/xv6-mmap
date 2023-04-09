@@ -8,7 +8,7 @@ int main(int argc, char *argv[]){
 	// declare and define all params
 	void *addr = 0;
 	unsigned int length = 8192;
-	int prot=PROT_READ | PROT_WRITE, flags=MAP_ANONYMOUS | MAP_SHARED, fd=0, offset=0;
+	int prot=PROT_READ | PROT_WRITE, flags=MAP_ANONYMOUS | MAP_PRIVATE, fd=0, offset=0;
 	printf(1, "Hola\n");
 
 	// fd = open("README", O_RDWR);
@@ -20,6 +20,7 @@ int main(int argc, char *argv[]){
 		printf(1, "Successful map\n");
 	}
 	ret[0] = 'q';
+	printf(1, "char: %c\n", ret[0]);
 
 	if (fork() == 0){
 		printf(1, "In child\n");
@@ -27,6 +28,7 @@ int main(int argc, char *argv[]){
 			printf(1, "Successful map\n");
 		}
 		ret[0] = 'a';
+		printf(1, "%c\n", ret[0]);
 	} else{
 		wait();
 		printf(1, "In parent %c\n", ret[0]);
