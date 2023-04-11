@@ -487,7 +487,7 @@ void mmapCopyUvm(pde_t *pgdir, struct mmapInfo *vma){
 }
 
 // VMA carries the entire information of how we want to map the pages
-int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
+int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload, char *faultedAddr){
   char *mem;
   uint a;
   int mappingPagesFrom;
@@ -495,6 +495,7 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
   struct anon *am = vma->anonMaps;
   char **physicalPages = 0;
   int anonFlag = 0;
+  char *end, *start;
 
   if (m){
     physicalPages = m->physicalPages;
@@ -504,20 +505,28 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
     panic("Incorrect VMA");
   }
 
-  mappingPagesFrom = vma->firstPageIndex;
-  // cprintf("first page index: %d\n", vma->firstPageIndex);
+  if (!faultedAddr){
+    mappingPagesFrom = vma->firstPageIndex;
+    a = (uint) vma->start;
+    end = vma->end;
+    start = vma->start;
+  } else{
+    mappingPagesFrom = (uint) (faultedAddr - vma->start) / PGSIZE;
+    a = (uint) faultedAddr;
+    end = faultedAddr + PGSIZE;
+    start = faultedAddr;
+  }
 
-  a = (uint) vma->start;
 
-  for(; a < (uint) vma->end; a += PGSIZE){
+  for(; a < (uint) end; a += PGSIZE){
     if (reload || !physicalPages[mappingPagesFrom]){
-      if (!physicalPages[mappingPagesFrom] && am){
+      if (!physicalPages[mappingPagesFrom] && am && (vma->prot & PROT_WRITE)){
         anonFlag = PTE_W;
       }
       mem = kalloc();
       if(mem == 0){
         cprintf("allocuvm out of memory\n");
-        deallocuvm(pgdir, (uint) vma->end, (uint) vma->start);
+        deallocuvm(pgdir, (uint) end, (uint) start);
         return -1;
       }
     }
@@ -539,7 +548,7 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload){
     cprintf("Allocating page %x for %x\n", mem, a);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), vma->actualFlags | anonFlag) < 0){
       cprintf("allocuvm out of memory (2)\n");
-      deallocuvm(pgdir, (uint) vma->end, (uint) vma->start);
+      deallocuvm(pgdir, (uint) end, (uint) start);
       kfree(mem);
       return -1;
     }
@@ -569,6 +578,10 @@ struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int
     }
   }
 
+  if (!mI){
+    return 0;
+  }
+
   mI->start = start;
   mI->end = start + length;
   mI->pages = m;
@@ -585,7 +598,11 @@ struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int
     mI->actualFlags = PTE_P | PTE_U;
   } else{
     cprintf("Marked as writable\n");
-    mI->actualFlags = PTE_P | PTE_W | PTE_U;
+    if (prot & PROT_WRITE){
+      mI->actualFlags = PTE_P | PTE_W | PTE_U;
+    } else{
+      mI->actualFlags = PTE_P | PTE_U;
+    }
   }
 
   return mI;
@@ -606,18 +623,28 @@ void printInfo(struct legend2 *m){
 }
 
 // Map the pages into struct legend2 only if they could be loaded
-int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reload){
+int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reload, char *faultedAddr){
   // pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz
   // cprintf("Offset: %d | i: %d | offset + i: %d\n", offset, i, offset + i);a
   uint i, pa, n, sz, offset;
   pte_t *pte;
   int pageNum;
   char *addr;
+  int firstPageIndex, numPages;
 
-  addr = m->start;
-  sz = min(m->numPages*PGSIZE, map->f->ip->size - m->firstPageIndex*PGSIZE);
-  offset = m->firstPageIndex * PGSIZE;
-  pageNum = m->firstPageIndex;
+  if (!faultedAddr){
+    addr = m->start;
+    sz = min(m->numPages*PGSIZE, map->f->ip->size - m->firstPageIndex*PGSIZE);
+    offset = m->firstPageIndex * PGSIZE;
+    pageNum = m->firstPageIndex;
+  } else{
+    addr = faultedAddr;
+    firstPageIndex = (int) (faultedAddr - m->start) / PGSIZE;
+    numPages = 1;
+    sz = min(numPages*PGSIZE, map->f->ip->size - firstPageIndex*PGSIZE);
+    offset = firstPageIndex * PGSIZE;
+    pageNum = firstPageIndex;
+  }
 
   if((uint) addr % PGSIZE != 0)
     panic("loaduvm: addr must be page aligned");
@@ -638,6 +665,7 @@ int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reloa
       }
     }
     map->ref[pageNum]++;
+    cprintf("pageNum: %d = %d\n", pageNum, map->ref[pageNum]);
     pageNum++;
   }
   return 0;
@@ -668,6 +696,7 @@ void freeVMA(struct mmapInfo *vma){
   vma->numPages = 0;
   vma->pages = 0;
   vma->valid = 0;
+  vma->anonMaps = 0;
 }
 
 int readFromPageCache(struct legend2 *m, char *addr, int offset, int length){
@@ -784,7 +813,7 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
 
   // Allocate PTEs
   int status;
-  if (( status = mmapAllocUvm(currproc->pgdir, vma, 0)) <0 ){
+  if (( status = mmapAllocUvm(currproc->pgdir, vma, 0, 0)) <0 ){
     cprintf("Couldn't allocate\n");
     return 0;
   }
@@ -795,8 +824,8 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
   cprintf("Loading...\n");
 
   ilock(m->f->ip);
-  if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0)) < 0){
-    // cprintf("Loading failed\n");
+  if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0, 0)) < 0){
+    cprintf("Loading failed\n");
     iunlock(m->f->ip);
     return 0;
   }
@@ -942,94 +971,190 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
   struct mmapInfo *vma = mmapAssign(m, anonMap, start, offset, length, prot, flags);
 
-  // Assign to the process
   for (int i=0; i<NOMAPS; i++){
-    // cprintf("%x\n", currproc->maps[i]);
     if (currproc->maps[i]==0){
-      // cprintf("Assigning: %d %d\n", i, currproc->pid);
       currproc->maps[i] = vma;
       break;
     } else{
-      // cprintf("%x %x %x %d %d\n", vma->start, vma->end, vma->pages, vma->numPages, vma->valid);
     }
   }
   cprintf("Given: %x\n", vma->start);
   return vma->start;
 }
 
-int munmap_helper(void *addr, unsigned int length){
-  // cprintf("munmap: %d\n", (int) addr);
-  struct proc *currproc = myproc();
-
-  // Round down the address
-  char *roundAddr = (char *) PGROUNDDOWN((unsigned int) addr);
-
-  // Find which vma the address belongs to
-  struct mmapInfo *m = 0;
-  for (int i=0; i<NOMAPS; i++){
-    if (currproc->maps[i]->valid && currproc->maps[i]->start<=roundAddr && roundAddr<currproc->maps[i]->end){
-      m = currproc->maps[i];
-      break;
-    }
+void clearAnon(struct anon *am){
+  for (int i=0; i<3; i++){
+    am->physicalPages[i] = 0;
   }
+  am->ref = 0;
+}
 
-  if (m==0){
-    // cprintf("Found none\n");
+void clearMap(struct legend2 *m){
+  m->f->ref--;
+  m->f = 0;
+  m->mapRef = 0;
+  for (int i=0; i<MAX_PAGES; i++){
+    m->physicalPages[i] = 0;
+    m->ref[i] = 0;
+  }
+}
+
+int munmap_helper(void *addr, unsigned int length){
+  if (length < 0){
+    return 0;
+  }
+  if (!addr){
     return 0;
   }
 
-  char *va = roundAddr;
-  char *end = (char *) min((int) m->end, (int) ((char *) addr+PGROUNDUP(length)));
+  char *roundAddr;
+  struct mmapInfo *vma = 0;
 
-  char *firstPage = roundAddr;
-  // char *lastPage = (char *) PGROUNDUP((int) (addr + length));
-  // int numPages = (lastPage - firstPage) / PGSIZE;
-  int startingPage = (firstPage - m->start) / PGSIZE;
-  // cprintf("Starting page: %d\n", startingPage);
+  roundAddr = (char *) PGROUNDDOWN((uint) addr);
 
-  // cprintf("Clearing %d pages\n", numPages);
-
-  pte_t *pte;
-  // cprintf("Clearing: %d %d\n", (int) va, (int) end);
-  for (; va<end; va+=PGSIZE){
-    if ( (pte = walkpgdir(currproc->pgdir, (void *) va, 0)) == 0){
-      panic("Couldn't get PTE");
-    }
-    if (!(*pte & PTE_P)){
-      panic("Should've been mapped");
-    }
-
-    // If dirty, write back to disk
-    // getDetails(pte);
-    if (isDirty(pte)){
-      cprintf("Page was dirty\n");
-      if (filewrite(m->pages->f, (char *) va, PGSIZE) < 0){
-        cprintf("something wrong\n");
+  // Find the VMA
+  struct proc *currproc = myproc();
+  for (int i=0; i<NOMAPS; i++){
+    if (currproc->maps[i] && currproc->maps[i]->valid){
+      if (currproc->maps[i]->start <= roundAddr && roundAddr < currproc->maps[i]->end){
+        vma = currproc->maps[i];
+        break;
       }
     }
-
-    uint pa = PTE_ADDR(*pte);
-    // cprintf("Before\n");
-    if (pa==0){
-      panic("kfree");
-    }
-    // cprintf("After\n");
-    char *v = P2V(pa);
-    kfree(v);
-    *pte = 0;
-
-    // Decrement the reference count for the page
-    // cprintf("Reference count for page %d was: %d\n", startingPage, m->pages->ref[startingPage]);
-    m->pages->ref[startingPage]--;
-    // Decrement the reference count for the map
-    // m->pages->mapRef--;
-    // Remove the physical page
-    m->pages->physicalPages[startingPage++] = 0;
   }
 
-  printInfo(m->pages);
+  // Possibly divide the VMA into 2
+  // Does it span the entire VMA?
+  struct mmapInfo *leftVMA = 0;
+  struct mmapInfo *rightVMA = 0;
+  if (roundAddr == vma->start && roundAddr + length >= vma->end){
+  } else if (roundAddr == vma->start){
+    // Divide into right-side VMA
+    cprintf("Split into right\n");
+    char *newStart = (char *) PGROUNDDOWN((uint) (vma->start + length));
+    int newOffset = PGROUNDUP(vma->firstPageIndex * PGSIZE + length);
+    rightVMA = mmapAssign(vma->pages, vma->anonMaps, newStart, newOffset, (uint) vma->end - (uint) newStart, vma->prot, vma->flags);
+    cprintf("From %x to %x\n", rightVMA->start, rightVMA->end);
+  } else if (roundAddr + length >= vma->end){
+    // Divide into left-side VMA
+    cprintf("Split into left\n");
+    char *newStart = vma->start;
+    int newOffset = (uint) roundAddr - (uint) vma->start;
+    leftVMA = mmapAssign(vma->pages, vma->anonMaps, newStart, newOffset, newOffset, vma->prot, vma->flags);
+  } else{
+    // Divide into left-and-right-side VMA
+    cprintf("Split into two\n");
+    char *left = vma->start;
+    char *leftEnd = roundAddr;
+    int leftOffset = (uint) leftEnd - (uint) left;
+    char *right = (char *) PGROUNDUP((uint) (roundAddr + length));
+    char *rightEnd = vma->end;
+    int rightOffset = (uint) rightEnd - (uint) right;
+    leftVMA = mmapAssign(vma->pages, vma->anonMaps, left, leftOffset, leftOffset, vma->prot, vma->flags);
+    rightVMA = mmapAssign(vma->pages, vma->anonMaps, right, rightOffset, rightOffset, vma->prot, vma->flags);
+  }
 
-  cprintf("munmap helper\n");
+  cprintf("%x %x\n", leftVMA, rightVMA);
+
+  if (!vma){
+    return 0;
+  }
+
+  // So, we have to deallocate the memory of the process and possibly flush it back to disk
+  char *start = vma->start;
+  char *end = vma->end;
+  char *va = start;
+  pte_t *pte;
+  int pageIndex = (int) (roundAddr - start) / PGSIZE;
+  uint pa;
+
+  struct legend2 *m;
+  struct anon *am;
+  int *ref;
+  int *count = 0;
+
+  m = vma->pages;
+  am = vma->anonMaps;
+  if (m){
+    ref = vma->pages->ref;
+    for (; va < end; va += PGSIZE){
+      if ((pte = walkpgdir(currproc->pgdir, va, 0)) == 0){
+        panic("munmap: pte should exist");
+      }
+      // Decrement the page reference count
+      ref[pageIndex]--;
+      cprintf("Legend %d %d\n", pageIndex, ref[pageIndex]);
+      if (ref[pageIndex] == 0){
+        // Check if the page is dirty and write it back to the disk
+        if (isDirty(pte)){
+          // Flush to disk
+          int n = PGSIZE;
+          int r = 0;
+          int max = ((MAXOPBLOCKS-1-1-2) / 2) * 512;
+          int i = 0;
+          while(i < n){
+            int n1 = n - i;
+            if(n1 > max)
+              n1 = max;
+            ilock(m->f->ip);
+            if ((r = writei(m->f->ip, addr + i, m->f->off, n1)) > 0)
+              m->f->off += r;
+            iunlock(m->f->ip);
+            end_op();
+            if(r < 0)
+              break;
+            if(r != n1)
+              panic("short filewrite");
+            i += r;
+          }
+
+          clearMap(m);
+        }
+        if(!pte)
+          va = (char *) (PGADDR(PDX((uint) va) + 1, 0, 0) - PGSIZE);
+        else if((*pte & PTE_P) != 0){
+          pa = PTE_ADDR(*pte);
+          if(pa == 0)
+            panic("kfree");
+          char *v = P2V(pa);
+          kfree(v);
+          *pte = 0;
+        }
+      }
+      *pte = 0;
+      pageIndex++;
+      lcr3(V2P(currproc->pgdir));
+    }
+  } else{
+    va = start;
+    count = &vma->anonMaps->ref;
+    for (; va < end; va += PGSIZE){
+      if ((pte = walkpgdir(currproc->pgdir, va, 0)) == 0){
+        panic("munmap: pte should exist");
+      }
+      // Decrement the page reference count
+      (*count)--;
+      if (*count == 0){
+        clearAnon(am);
+
+        if(!pte)
+          va = (char *) (PGADDR(PDX((uint) va) + 1, 0, 0) - PGSIZE);
+        else if((*pte & PTE_P) != 0){
+          pa = PTE_ADDR(*pte);
+          if(pa == 0)
+            panic("kfree");
+          char *v = P2V(pa);
+          kfree(v);
+          *pte = 0;
+        }
+      }
+      // Remove the page table entry
+      *pte = 0;
+      pageIndex++;
+    }
+  }
+  // Remove VMA from struct proc
+  freeVMA(vma);
   return 0;
 }
 
@@ -1048,7 +1173,7 @@ int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
         // 1. Alloc new pages over the same range
         // 2. Clear the initial page table entries with correct permissions
         vma->actualFlags |= PTE_W;
-        mmapAllocUvm(pgdir, vma, 1);
+        mmapAllocUvm(pgdir, vma, 1, addr);
         vma->actualFlags &= ~PTE_W;
         // 3. Flush TLB: Reload the base register cr3
         // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
@@ -1062,24 +1187,22 @@ int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
 
     // Allocate PTEs
     int status;
-    if (( status = mmapAllocUvm(pgdir, vma, 0)) < 0 ){
+    if (( status = mmapAllocUvm(pgdir, vma, 0, addr)) < 0 ){
       cprintf("Couldn't allocate\n");
-      // return (void *) 0xffffffff;
       return -1;
     }
 
-    // cprintf("Loading...\n");
     if (!(vma->flags & MAP_ANONYMOUS)){
       // Load the pages
       int written;
       ilock(m->f->ip);
-      if (( written = mmapLoadUvm(pgdir, m, vma, 0)) < 0){
+      if (( written = mmapLoadUvm(pgdir, m, vma, 0, addr)) < 0){
         cprintf("Loading failed\n");
         iunlock(m->f->ip);
-        // return (void *) 0xffffffff;
         return -1;
       }
       iunlock(m->f->ip);
+      return 0;
     } else{
       return 0;
     }

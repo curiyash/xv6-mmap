@@ -236,16 +236,6 @@ fork(void)
   return pid;
 }
 
-void clearMap(struct legend2 *m){
-  m->f->ref--;
-  m->f = 0;
-  m->mapRef = 0;
-  for (int i=0; i<MAX_PAGES; i++){
-    m->physicalPages[i] = 0;
-    m->ref[i] = 0;
-  }
-}
-
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.

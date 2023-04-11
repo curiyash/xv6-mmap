@@ -151,6 +151,10 @@ int munmap_helper(void *addr, unsigned int length);
 
 void clear(pde_t *pgdir, struct mmapInfo *m);
 
+void clearMap(struct legend2 *m);
+
+void clearAnon(struct anon *am);
+
 struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int flags, struct file *f, int offset);
 
 int readFromPageCache(struct legend2 *m, char *addr, int offset, int length);
