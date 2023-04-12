@@ -364,7 +364,7 @@ copyuvm(pde_t *pgdir, uint sz)
   for (int i=0; i<NOMAPS; i++){
     struct mmapInfo *vma = currproc->maps[i];
     // Get a new VMA, set the appropriate flags
-    if (vma && vma->valid){
+    if (vma && vma->ref){
       // Get the pte, mark the AVL bits]
       char *start = vma->start;
       char *end = (char *) PGROUNDUP((uint) vma->end);
@@ -469,6 +469,7 @@ struct mmapInfo *mmapdup(struct mmapInfo *m){
   } else{
     m->anonMaps->ref++;
   }
+  m->ref++;
   return m;
 }
 
@@ -572,7 +573,7 @@ struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int
 
   struct mmapInfo *mI = 0;
   for (int i=0; i<NMAPS; i++){
-    if (mtable.info[i].valid==0){
+    if (mtable.info[i].ref==0){
       mI = &mtable.info[i];
       break;
     }
@@ -585,7 +586,7 @@ struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int
   mI->start = start;
   mI->end = start + length;
   mI->pages = m;
-  mI->valid = 1;
+  mI->ref = 1;
   mI->firstPageIndex = offset / PGSIZE;
   mI->numPages = numPages;
   mI->prot = prot;
@@ -695,7 +696,7 @@ void freeVMA(struct mmapInfo *vma){
   vma->prot = 0;
   vma->numPages = 0;
   vma->pages = 0;
-  vma->valid = 0;
+  vma->ref = 0;
   vma->anonMaps = 0;
 }
 
@@ -1015,7 +1016,7 @@ int munmap_helper(void *addr, unsigned int length){
   // Find the VMA
   struct proc *currproc = myproc();
   for (int i=0; i<NOMAPS; i++){
-    if (currproc->maps[i] && currproc->maps[i]->valid){
+    if (currproc->maps[i] && currproc->maps[i]->ref){
       if (currproc->maps[i]->start <= roundAddr && roundAddr < currproc->maps[i]->end){
         vma = currproc->maps[i];
         break;
@@ -1061,11 +1062,12 @@ int munmap_helper(void *addr, unsigned int length){
   }
 
   // So, we have to deallocate the memory of the process and possibly flush it back to disk
-  char *start = vma->start;
-  char *end = vma->end;
+  char *start = roundAddr;
+  char *end = (char *) min(PGROUNDUP((uint) (vma->start + length)), PGROUNDUP((uint) vma->end));
+  cprintf("Unmapping from %x-%x\n", start, end);
   char *va = start;
   pte_t *pte;
-  int pageIndex = (int) (roundAddr - start) / PGSIZE;
+  int pageIndex = (int) (roundAddr - vma->start) / PGSIZE;
   uint pa;
 
   struct legend2 *m;
@@ -1080,6 +1082,10 @@ int munmap_helper(void *addr, unsigned int length){
     for (; va < end; va += PGSIZE){
       if ((pte = walkpgdir(currproc->pgdir, va, 0)) == 0){
         panic("munmap: pte should exist");
+      }
+      if (!(*pte & PTE_P)){
+        // This region wasn't mapped. Skip it
+        continue;
       }
       // Decrement the page reference count
       ref[pageIndex]--;

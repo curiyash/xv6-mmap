@@ -215,7 +215,7 @@ fork(void)
       np->ofile[i] = filedup(curproc->ofile[i]);
   
   for(i = 0; i < NOMAPS; i++)
-    if(curproc->maps[i] && curproc->maps[i]->valid){
+    if(curproc->maps[i] && curproc->maps[i]->ref){
       if (curproc->maps[i]->anonMaps){
         cprintf("Anonymous %x\n", curproc->maps[i]->start);
       }
@@ -261,8 +261,9 @@ exit(void)
   // Clear PTEs of mapped files if their ref count is 1
   // cprintf("Exiting\n");
   for (md = 0; md<NOMAPS; md++){
-    if (curproc->maps[md] && curproc->maps[md]->valid==1){
+    if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
       if (curproc->maps[md]->pages && curproc->maps[md]->pages->mapRef>1){
+        // Clear the PTEs to save the pages
         clear(curproc->pgdir, curproc->maps[md]);
       } else if (curproc->maps[md]->pages){
         // Clear the struct out globally
@@ -271,8 +272,11 @@ exit(void)
       if (curproc->maps[md]->anonMaps && curproc->maps[md]->anonMaps->ref > 1){
         clear(curproc->pgdir, curproc->maps[md]);
       }
-      curproc->maps[md]--;
-      curproc->maps[md]->valid = 0;
+      curproc->maps[md]->ref--;
+
+      if (curproc->maps[md]->ref == 0){
+        freeVMA(curproc->maps[md]);
+      }
       curproc->maps[md] = 0;
     }
   }
@@ -334,6 +338,26 @@ wait(void)
         // for (int i=0; i<NOMAPS; i++){
         //   p->maps[i] = 0;
         // }
+        for (int md = 0; md<NOMAPS; md++){
+          if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
+            if (curproc->maps[md]->pages && curproc->maps[md]->pages->mapRef>1){
+              // Clear the PTEs to save the pages
+              clear(curproc->pgdir, curproc->maps[md]);
+            } else if (curproc->maps[md]->pages){
+              // Clear the struct out globally
+              clearMap(curproc->maps[md]->pages);
+            }
+            if (curproc->maps[md]->anonMaps && curproc->maps[md]->anonMaps->ref > 1){
+              clear(curproc->pgdir, curproc->maps[md]);
+            }
+            curproc->maps[md]->ref--;
+
+            if (curproc->maps[md]->ref == 0){
+              freeVMA(curproc->maps[md]);
+            }
+            curproc->maps[md] = 0;
+          }
+        }
         release(&ptable.lock);
         return pid;
       }

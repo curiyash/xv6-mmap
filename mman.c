@@ -18,11 +18,11 @@ int main(int argc, char *argv[]){
 
 	printf(1, "char: %c\n", ret[0]);
 	printf(1, "############################\n");
-	printf(1, "char: %c\n", ret[4096]);
+	ret[0] = 'a';
 
-	// munmap(ret, 4096);
+	munmap(ret+4096, 4096);
 
-	// printf(1, "char: %c\n", ret[0]);
+	printf(1, "char: %c\n", ret[0]);
 
 	close(fd);
 	exit();

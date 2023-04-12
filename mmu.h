@@ -141,9 +141,11 @@ struct mmapInfo{
   int flags;
   struct legend2 *pages;
   struct anon *anonMaps;
-  int valid;
+  int ref;
   int actualFlags;
 };
+
+void freeVMA(struct mmapInfo *vma);
 
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset);
 
