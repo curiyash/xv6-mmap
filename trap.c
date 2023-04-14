@@ -110,7 +110,6 @@ trap(struct trapframe *tf)
       }
       break;
     } else{
-      cprintf("Hello\n");
       exit();
     }
     // exit();

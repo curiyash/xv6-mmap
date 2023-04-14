@@ -167,6 +167,8 @@ void unfoldMaps();
 
 int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma);
 
+void cleanUpVMA(struct mmapInfo *vma);
+
 struct legend2 *findInCache(struct file *f);
 
 // Task state segment format

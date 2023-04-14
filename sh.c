@@ -166,11 +166,7 @@ main(void)
       continue;
     }
     if(fork1() == 0){
-      printf(1, "Reading %x\n", buf);
       runcmd(parsecmd(buf));
-    }
-    else{
-      printf(1, "In else\n");
     }
     wait();
     printf(1, "Came back\n");

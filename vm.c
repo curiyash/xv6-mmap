@@ -15,15 +15,19 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
+
+// General map cache
 struct {
   // struct spinlock lock;
   struct legend2 maps[NMAPS];
 } mmapCache;
 
+// Anonymous map cache
 struct {
   struct anon anonMaps[NMAPS];
 } anonCache;
 
+// mmapInfo structs
 struct {
   struct mmapInfo info[NMAPS];
 } mtable;
@@ -571,42 +575,42 @@ struct legend2 *mmapAlloc(){
 struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int offset, int length, int prot, int flags){
   int numPages = (PGROUNDUP(offset + length) - offset) / PGSIZE;
 
-  struct mmapInfo *mI = 0;
+  struct mmapInfo *vma = 0;
   for (int i=0; i<NMAPS; i++){
     if (mtable.info[i].ref==0){
-      mI = &mtable.info[i];
+      vma = &mtable.info[i];
       break;
     }
   }
 
-  if (!mI){
+  if (!vma){
     return 0;
   }
 
-  mI->start = start;
-  mI->end = start + length;
-  mI->pages = m;
-  mI->ref = 1;
-  mI->firstPageIndex = offset / PGSIZE;
-  mI->numPages = numPages;
-  mI->prot = prot;
-  mI->flags = flags;
-  mI->anonMaps = am;
+  vma->start = start;
+  vma->end = start + length;
+  vma->pages = m;
+  vma->ref = 1;
+  vma->firstPageIndex = offset / PGSIZE;
+  vma->numPages = numPages;
+  vma->prot = prot;
+  vma->flags = flags;
+  vma->anonMaps = am;
 
   // If MAP_PRIVATE is present, mark the page as read-only. When page fault occurs, then we'll decide if the page was actually writable or not using the prot field
   if (flags & MAP_PRIVATE){
     cprintf("This should be marked as read-only\n");
-    mI->actualFlags = PTE_P | PTE_U;
+    vma->actualFlags = PTE_P | PTE_U;
   } else{
     cprintf("Marked as writable\n");
     if (prot & PROT_WRITE){
-      mI->actualFlags = PTE_P | PTE_W | PTE_U;
+      vma->actualFlags = PTE_P | PTE_W | PTE_U;
     } else{
-      mI->actualFlags = PTE_P | PTE_U;
+      vma->actualFlags = PTE_P | PTE_U;
     }
   }
 
-  return mI;
+  return vma;
 }
 
 int min(int a, int b){
@@ -791,7 +795,6 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
 
   m->f = f;
   m->mapRef++;
-  m->mapRef++;
   m->f->ref++;
   // cprintf("ref: %d\n", m->f->ref);
 
@@ -922,7 +925,6 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   if (!(flags & MAP_ANONYMOUS)){
     offset = PGROUNDDOWN(offset);
 
-
     // Find in the global cache
     m = findInCache(f);
 
@@ -933,8 +935,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
     m->f = currproc->ofile[fd];
     m->mapRef++;
-    m->mapRef++;
-    // m->f->ref++;
+    m->f->ref++;
     // cprintf("ref: %d\n", m->f->ref);
 
     // Check if fd prot and map prot are compatible
@@ -958,7 +959,6 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
       return (void *) 0xffffffff;
     }
 
-    anonMap->ref++;
     anonMap->ref++;
     offset = 0;
   }
@@ -1000,6 +1000,161 @@ void clearMap(struct legend2 *m){
   }
 }
 
+// Write to disk function
+  // returns success or fail
+int writeToDisk(struct mmapInfo *vma, int pageIndex){
+  int n = PGSIZE;
+  struct legend2 *m = vma->pages;
+  char *addr = m->physicalPages[pageIndex];
+  
+  if (!m){
+    panic("Should have had a legend\n");
+  }
+
+  if (pageIndex==vma->firstPageIndex+vma->numPages-1){
+    // We're writing the last page, do not write beyond the vma specified
+    if (((uint) vma->end % PGSIZE) == 0){
+      // Skip
+    } else{
+      n = min((uint) vma->end - PGROUNDDOWN((uint) vma->end), PGSIZE);
+      cprintf("Writing the last page according to VMA - writing %d bytes\n", n);
+    }
+  }
+  int r = 0;
+  int max = ((MAXOPBLOCKS-1-1-2) / 2) * 512;
+  int i = 0;
+  cprintf("%x %d\n", m->f->ip, m->f->ip->ref);
+  begin_op();
+  while(i < n){
+    int n1 = n - i;
+    if(n1 > max)
+      n1 = max;
+    ilock(m->f->ip);
+    if ((r = writei(m->f->ip, addr + i, m->f->off, n1)) > 0)
+      m->f->off += r;
+    iunlock(m->f->ip);
+    if(r < 0)
+      break;
+    if(r != n1)
+      panic("short filewrite");
+    i += r;
+  }
+  end_op();
+
+  return 0;
+}
+
+void clearPTE(pde_t *pgdir, char *va, int numPTEs){
+  // Since VMA allocates consecutive PTEs, we just need to find the first PTE to clear and then we clear numPTEs
+  pte_t *pte;
+
+  pte = walkpgdir(pgdir, va, 0);
+  if (!pte){
+    panic("Yet to handle");
+  }
+  if (!(*pte & PTE_P)){
+    panic("Yet to handle and understand");
+  }
+
+  for (int i=0; i < numPTEs; i++){
+    *pte = 0;
+    pte++;
+  }
+}
+
+void freeMap(struct legend2 *map, int clearAll){
+  // This should only happen when mapRef is 0
+  if (map->mapRef != 0){
+    panic("Freeing map that is referenced");
+  }
+  // We don't need to clear the PTEs. It will be cleared in freevm as well as the pages, but we need to check if the pages are dirty or not
+  clearMap(map);
+}
+
+void freeAnon(struct anon *anon, int clearAll){
+  // This should only happen when anon ref is 0
+  if (anon->ref != 0){
+    panic("Freeing map that is referenced");
+  }
+  // We don't need to clear the PTEs. It will be cleared in freevm as well as the pages, but we need to check if the pages are dirty or not
+  clearAnon(anon);
+}
+
+void cleanUpVMA(struct mmapInfo *vma){
+  struct proc *currproc = myproc();
+  pte_t *pteIndex;
+  char *addr = vma->start;
+  if (vma->flags & (~MAP_ANONYMOUS)){
+    if (vma->flags & MAP_SHARED){
+      cprintf("We are looking at a file-backed mapping which is shared\n");
+      for (int i=0; i < MAX_PAGES; i++, addr+=PGSIZE){
+        if (vma->pages->ref[i] > 0){
+          vma->pages->ref[i]--;
+
+          pteIndex = walkpgdir(currproc->pgdir, addr, 0);
+
+          if (!pteIndex){
+            panic("Yet to handled 1078");
+          }
+          if (!(*pteIndex & PTE_P)){
+            cprintf("Page wasn't mapped at all. We are clear");
+          }
+
+          if (isDirty(pteIndex)){
+            cprintf("In cleanUpVMA: This page was dirty, writing it back to disk\n");
+            writeToDisk(vma, i);
+          }
+
+          if (vma->pages->ref[i] == 0){
+            cprintf("In cleanupVMA: The ref count of this page was 0, hence, this page was freed\n");
+            vma->pages->physicalPages[i] = 0;
+          }
+        }
+      }
+      vma->ref--;
+      vma->pages->mapRef--;
+
+      if (vma->pages->mapRef == 0){
+        cprintf("In cleanUpVMA: mapRef became 0 and so this map was freed\n");
+        freeMap(vma->pages, 0);
+      }
+      if (vma->ref == 0){
+        cprintf("In cleanUpVMA: vma ref became 0 and so this vma was freed\n");
+        freeVMA(vma);
+      }
+    } else{
+      cprintf("In cleanupVMA: We are looking at private file-backed mapping\n");
+      vma->ref--;
+      vma->pages->mapRef--;
+      if (vma->ref == 0){
+        cprintf("cleanupVMA: The VMA wasn't shared by anyone, free the VMA and the vma->pages if the ref count is 0\n");
+        if (vma->pages->mapRef == 0){
+          cprintf("cleanupVMA: Freeing the Map\n");
+          freeMap(vma->pages, 0);
+        }
+        freeVMA(vma);
+      } else{
+        cprintf("cleanupVMA: Clearing PTEs\n");
+        clearPTE(currproc->pgdir, vma->start, vma->numPages);
+      }
+    }
+  } else{
+    cprintf("We are looking at an anonymous mapping which is shared\n");
+    vma->ref--;
+    vma->anonMaps->ref--;
+    if (vma->ref==0){
+      if (vma->anonMaps->ref == 0){
+        cprintf("cleanupVMA: Anon ref 0, clearing anon\n");
+        freeAnon(vma->anonMaps, 1);
+      }
+      freeVMA(vma);
+    } else{
+      cprintf("cleanupVMA: Clearing PTEs\n");
+      clearPTE(currproc->pgdir, vma->start, vma->numPages);
+    }
+  }
+}
+
 int munmap_helper(void *addr, unsigned int length){
   if (length < 0){
     return 0;
@@ -1010,6 +1165,7 @@ int munmap_helper(void *addr, unsigned int length){
 
   char *roundAddr;
   struct mmapInfo *vma = 0;
+  int vmaIndex = 0;
 
   roundAddr = (char *) PGROUNDDOWN((uint) addr);
 
@@ -1019,6 +1175,7 @@ int munmap_helper(void *addr, unsigned int length){
     if (currproc->maps[i] && currproc->maps[i]->ref){
       if (currproc->maps[i]->start <= roundAddr && roundAddr < currproc->maps[i]->end){
         vma = currproc->maps[i];
+        vmaIndex = i;
         break;
       }
     }
@@ -1035,6 +1192,9 @@ int munmap_helper(void *addr, unsigned int length){
     char *newStart = (char *) PGROUNDDOWN((uint) (vma->start + length));
     int newOffset = PGROUNDUP(vma->firstPageIndex * PGSIZE + length);
     rightVMA = mmapAssign(vma->pages, vma->anonMaps, newStart, newOffset, (uint) vma->end - (uint) newStart, vma->prot, vma->flags);
+    if (!rightVMA){
+      return -1;
+    }
     cprintf("From %x to %x\n", rightVMA->start, rightVMA->end);
   } else if (roundAddr + length >= vma->end){
     // Divide into left-side VMA
@@ -1042,6 +1202,9 @@ int munmap_helper(void *addr, unsigned int length){
     char *newStart = vma->start;
     int newOffset = (uint) roundAddr - (uint) vma->start;
     leftVMA = mmapAssign(vma->pages, vma->anonMaps, newStart, newOffset, newOffset, vma->prot, vma->flags);
+    if (!leftVMA){
+      return -1;
+    }
   } else{
     // Divide into left-and-right-side VMA
     cprintf("Split into two\n");
@@ -1053,9 +1216,17 @@ int munmap_helper(void *addr, unsigned int length){
     int rightOffset = (uint) rightEnd - (uint) right;
     leftVMA = mmapAssign(vma->pages, vma->anonMaps, left, leftOffset, leftOffset, vma->prot, vma->flags);
     rightVMA = mmapAssign(vma->pages, vma->anonMaps, right, rightOffset, rightOffset, vma->prot, vma->flags);
+    if (!leftVMA || !rightVMA){
+      if (leftVMA){
+        freeVMA(leftVMA);
+      } else if (rightVMA){
+        freeVMA(rightVMA);
+      }
+      return -1;
+    }
   }
 
-  cprintf("%x %x\n", leftVMA, rightVMA);
+  cprintf("%x %x %d\n", leftVMA, rightVMA, vmaIndex);
 
   if (!vma){
     return 0;
@@ -1063,7 +1234,7 @@ int munmap_helper(void *addr, unsigned int length){
 
   // So, we have to deallocate the memory of the process and possibly flush it back to disk
   char *start = roundAddr;
-  char *end = (char *) min(PGROUNDUP((uint) (vma->start + length)), PGROUNDUP((uint) vma->end));
+  char *end = (char *) min(PGROUNDUP((uint) (start + length)), PGROUNDUP((uint) vma->end));
   cprintf("Unmapping from %x-%x\n", start, end);
   char *va = start;
   pte_t *pte;
@@ -1077,6 +1248,9 @@ int munmap_helper(void *addr, unsigned int length){
 
   m = vma->pages;
   am = vma->anonMaps;
+
+  // For MAP_PRIVATE, we would like to discard the pages
+  // For MAP_SHARED, check if the page's reference count has gone down or not and write to the disk
   if (m){
     ref = vma->pages->ref;
     for (; va < end; va += PGSIZE){
@@ -1084,7 +1258,6 @@ int munmap_helper(void *addr, unsigned int length){
         panic("munmap: pte should exist");
       }
       if (!(*pte & PTE_P)){
-        // This region wasn't mapped. Skip it
         continue;
       }
       // Decrement the page reference count
@@ -1093,28 +1266,7 @@ int munmap_helper(void *addr, unsigned int length){
       if (ref[pageIndex] == 0){
         // Check if the page is dirty and write it back to the disk
         if (isDirty(pte)){
-          // Flush to disk
-          int n = PGSIZE;
-          int r = 0;
-          int max = ((MAXOPBLOCKS-1-1-2) / 2) * 512;
-          int i = 0;
-          while(i < n){
-            int n1 = n - i;
-            if(n1 > max)
-              n1 = max;
-            ilock(m->f->ip);
-            if ((r = writei(m->f->ip, addr + i, m->f->off, n1)) > 0)
-              m->f->off += r;
-            iunlock(m->f->ip);
-            end_op();
-            if(r < 0)
-              break;
-            if(r != n1)
-              panic("short filewrite");
-            i += r;
-          }
-
-          clearMap(m);
+          writeToDisk(vma, pageIndex);
         }
         if(!pte)
           va = (char *) (PGADDR(PDX((uint) va) + 1, 0, 0) - PGSIZE);
@@ -1159,8 +1311,17 @@ int munmap_helper(void *addr, unsigned int length){
       pageIndex++;
     }
   }
+  
   // Remove VMA from struct proc
-  freeVMA(vma);
+  // Decrement the ref count. If the ref count is 0, free the VMA
+  vma->ref--;
+  if (vma->ref == 0){
+    cprintf("Freeing the VMA\n");
+    freeVMA(vma);
+  } else{
+    cprintf("I didn't print the VMA\n");
+    // Assign the leftVMA and rightVMA
+  }
   return 0;
 }
 

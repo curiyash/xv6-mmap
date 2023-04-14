@@ -245,10 +245,18 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
-  int md;
 
   if(curproc == initproc)
     panic("init exiting");
+
+  for (int md = 0; md<NOMAPS; md++){
+    if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
+      cprintf("############################\n");
+      cleanUpVMA(curproc->maps[md]);
+      cprintf("############################\n");
+      curproc->maps[md] = 0;
+    }
+  }
 
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
@@ -257,30 +265,6 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
-
-  // Clear PTEs of mapped files if their ref count is 1
-  // cprintf("Exiting\n");
-  for (md = 0; md<NOMAPS; md++){
-    if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
-      if (curproc->maps[md]->pages && curproc->maps[md]->pages->mapRef>1){
-        // Clear the PTEs to save the pages
-        clear(curproc->pgdir, curproc->maps[md]);
-      } else if (curproc->maps[md]->pages){
-        // Clear the struct out globally
-        clearMap(curproc->maps[md]->pages);
-      }
-      if (curproc->maps[md]->anonMaps && curproc->maps[md]->anonMaps->ref > 1){
-        clear(curproc->pgdir, curproc->maps[md]);
-      }
-      curproc->maps[md]->ref--;
-
-      if (curproc->maps[md]->ref == 0){
-        freeVMA(curproc->maps[md]);
-      }
-      curproc->maps[md] = 0;
-    }
-  }
-  // cprintf("Exited\n");
 
   begin_op();
   iput(curproc->cwd);
@@ -338,26 +322,7 @@ wait(void)
         // for (int i=0; i<NOMAPS; i++){
         //   p->maps[i] = 0;
         // }
-        for (int md = 0; md<NOMAPS; md++){
-          if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
-            if (curproc->maps[md]->pages && curproc->maps[md]->pages->mapRef>1){
-              // Clear the PTEs to save the pages
-              clear(curproc->pgdir, curproc->maps[md]);
-            } else if (curproc->maps[md]->pages){
-              // Clear the struct out globally
-              clearMap(curproc->maps[md]->pages);
-            }
-            if (curproc->maps[md]->anonMaps && curproc->maps[md]->anonMaps->ref > 1){
-              clear(curproc->pgdir, curproc->maps[md]);
-            }
-            curproc->maps[md]->ref--;
-
-            if (curproc->maps[md]->ref == 0){
-              freeVMA(curproc->maps[md]);
-            }
-            curproc->maps[md] = 0;
-          }
-        }
+        // Write dirty pages back to disk regardless of ref count
         release(&ptable.lock);
         return pid;
       }
