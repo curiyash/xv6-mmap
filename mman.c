@@ -16,7 +16,7 @@ int main(int argc, char *argv[]){
 	// Idea is to map as MAP_ANON
 	char *ret = mmap(addr, length, prot, flags, fd, offset);
 
-	printf(1, "char: %c\n", ret[0]);
+	printf(1, "char: %c %c\n", ret[0], ret[4096]);
 
 	ret[0] = 'z';
 
@@ -24,9 +24,12 @@ int main(int argc, char *argv[]){
 	// printf(1, "############################\n");
 	// ret[0] = 'a';
 
-	// munmap(ret+4096, 4096);
+	// munmap(ret, 4096);
+	munmap(ret+4096, 4096);
 
-	// printf(1, "char: %c\n", ret[0]);
+	printf(1, "char: %c\n", ret[4096]);
+	printf(1, "char: %c\n", ret[0]);
+	printf(1, "Hello\n");
 
 	// close(fd);
 	exit();

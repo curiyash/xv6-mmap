@@ -892,6 +892,17 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
   return length - toWrite;
 }
 
+int mmapAssignProc(struct proc *currproc, struct mmapInfo *vma){
+  for (int i=0; i < NOMAPS; i++){
+    if (!currproc->maps[i] || currproc->maps[i]->ref == 0){
+      currproc->maps[i] = vma;
+      cprintf("Boolaalaaloo\n");
+      return 0;
+    }
+  }
+  return -1;
+}
+
 void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, int offset){
   // Anonymous Maps aren't cached, do you need to?
   // Process calls MAP_ANON and MAP_SHARED, you note this in the struct proc
@@ -972,13 +983,13 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
 
   struct mmapInfo *vma = mmapAssign(m, anonMap, start, offset, length, prot, flags);
 
-  for (int i=0; i<NOMAPS; i++){
-    if (currproc->maps[i]==0){
-      currproc->maps[i] = vma;
-      break;
-    } else{
-    }
+  int status = 0;
+  if ((status = mmapAssignProc(currproc, vma)) == -1){
+    freeVMA(vma);
+    panic("Out of VMAs");
+    return MAP_FAILED;
   }
+
   cprintf("Given: %x\n", vma->start);
   return vma->start;
 }
@@ -1227,6 +1238,21 @@ int munmap_helper(void *addr, unsigned int length){
   }
 
   cprintf("%x %x %d\n", leftVMA, rightVMA, vmaIndex);
+
+  int status = 0;
+  if (leftVMA){
+    // Switch the VMAs in current process
+    currproc->maps[vmaIndex] = leftVMA;
+
+    // Now assign the rightVMA if it exists
+    if (rightVMA){
+      if ((status = mmapAssignProc(currproc, rightVMA)) == -1){
+        return -1;
+      }
+    }
+  } else if (rightVMA){
+    currproc->maps[vmaIndex] = rightVMA;
+  }
 
   if (!vma){
     return 0;
