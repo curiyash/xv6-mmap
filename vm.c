@@ -789,7 +789,7 @@ struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int
 
   m->f = f;
   m->mapRef++;
-  // m->f->ref++;
+  m->f->ref++;
   // cprintf("ref: %d\n", m->f->ref);
 
   // Check if fd prot and map prot are compatible
@@ -1021,14 +1021,25 @@ int writeToDisk(struct mmapInfo *vma, int pageIndex){
   int r = 0;
   int max = ((MAXOPBLOCKS-1-1-2) / 2) * 512;
   int i = 0;
+  char d[5];
   begin_op();
   while(i < n){
     int n1 = n - i;
     if(n1 > max)
       n1 = max;
     ilock(m->f->ip);
+    cprintf("offset: %d | ip->size: %d | %d\n", m->f->off, m->f->ip->size, n1);
+    memmove(d, addr, 4);
+    addr[4] = '\0';
+    cprintf("-----------------------------%s-----------------------\n", d);
+    if(n1 > 0 && m->f->off > m->f->ip->size){
+      m->f->ip->size = m->f->off;
+      m->f->off = 0;
+      iupdate(m->f->ip);
+    }
     if ((r = writei(m->f->ip, addr + i, m->f->off, n1)) > 0)
       m->f->off += r;
+    cprintf("r: %d\n", r);
     iunlock(m->f->ip);
     if(r < 0)
       break;
@@ -1085,18 +1096,19 @@ void cleanUpVMA(struct mmapInfo *vma){
     if (vma->flags & MAP_SHARED){
       // cprintf("We are looking at a file-backed mapping which is shared\n");
       for (int i=0; i < MAX_PAGES; i++, addr+=PGSIZE){
-        if (vma->pages && vma->pages->ref[i] > 0){
+        if (vma->pages && vma->pages->physicalPages[i] > 0){
           vma->pages->ref[i]--;
           pteIndex = walkpgdir(currproc->pgdir, addr, 0);
           if (!pteIndex){
             panic("Yet to handled 1078");
           }
-          if (!(*pteIndex & PTE_P)){
-            continue;
-          }
+          // if (!(*pteIndex & PTE_P)){
+            // cprintf("Unmapped %x\n", PTE_ADDR(*pteIndex));
+            // continue;
+          // }
           getDetails(pteIndex);
-          if (isDirty(pteIndex)){
-            // cprintf("In cleanUpVMA: This page was dirty, writing it back to disk\n");
+          if (isDirty(pteIndex) || 1){
+            cprintf("In cleanUpVMA: This page was dirty, writing it back to disk\n");
             writeToDisk(vma, i);
           }
           if (vma->pages->ref[i] == 0){

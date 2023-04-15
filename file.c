@@ -162,10 +162,6 @@ filewrite(struct file *f, char *addr, int n)
         // You should have gotten the appropriate pages into your page cache by now
         r = writeToPageCache(map, addr, f->off, n1);
         f->off += r;
-        if(n > 0 && f->off > f->ip->size){
-          f->ip->size = f->off;
-          iupdate(f->ip);
-        }
         cprintf("written\n");
         // cprintf("r: %d\n", r);
       } else{

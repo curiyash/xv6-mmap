@@ -57,6 +57,7 @@ fourfiles(void)
     while((n = read(fd, buf, sizeof(buf))) > 0){
       for(j = 0; j < n; j++){
         if(buf[j] != '0'+i){
+          printf(1, "Should've been %c but is %c\n", '0'+i, buf[j]);
           printf(1, "wrong char\n");
           exit();
         }
