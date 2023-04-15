@@ -78,7 +78,7 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
   case T_PGFLT:
-    cprintf("Faulted on 0x%x\n", rcr2());
+    // cprintf("Faulted on 0x%x\n", rcr2());
     char *faultedOn = (char *) rcr2();
     struct mmapInfo *m = 0;
     struct proc *currproc = myproc();
@@ -91,7 +91,7 @@ trap(struct trapframe *tf)
       //   cprintf("Empty\n");
       // }
       if (map && map->start <= faultedOn && faultedOn < map->end){
-        cprintf("Go ahead and check\n");
+        // cprintf("Go ahead and check\n");
         m = map;
         break;
       }

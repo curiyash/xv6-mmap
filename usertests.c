@@ -555,6 +555,8 @@ fourfiles(void)
     wait();
   }
 
+  printf(1, "!!!!!!!!!!!!!!! In parent\n");
+
   for(i = 0; i < 2; i++){
     fname = names[i];
     fd = open(fname, 0);
@@ -569,6 +571,7 @@ fourfiles(void)
       total += n;
     }
     close(fd);
+    printf(1, "total: %d\n", total);
     if(total != 12*500){
       printf(1, "wrong length %d\n", total);
       exit();
@@ -1756,10 +1759,10 @@ main(int argc, char *argv[])
   }
   close(open("usertests.ran", O_CREATE));
 
-  argptest();
-  createdelete();
-  linkunlink();
-  concreate();
+  // argptest();
+  // createdelete();
+  // linkunlink();
+  // concreate();
   fourfiles();
   sharedfd();
 

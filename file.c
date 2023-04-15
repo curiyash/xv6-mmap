@@ -12,6 +12,7 @@
 #include "mmu.h"
 #include "mman.h"
 #include "stat.h"
+#include "proc.h"
 
 struct devsw devsw[NDEV];
 struct {
@@ -106,19 +107,20 @@ fileread(struct file *f, char *addr, int n)
   if(f->type == FD_PIPE)
     return piperead(f->pipe, addr, n);
   if(f->type == FD_INODE){
-    if (f->ip!=(struct inode *) 0x80112a24){
-      cprintf("Should read: %d %d\n", f->off, n);
+    if (f->ip!=(struct inode *) 0x80111a24){
+      cprintf("Should read: %d %d %x %d\n", f->off, n, f->ip, f->ip->size);
       int prot = f->readable?PROT_READ:0 | f->writable?PROT_WRITE:0;
       struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
       r = readFromPageCache(map, addr, f->off, n);
       f->off += r;
     } else{
-      cprintf("Type: %d\n", f->type);
+      // cprintf("Type: %d\n", f->type);
       ilock(f->ip);
       if((r = readi(f->ip, addr, f->off, n)) > 0)
         f->off += r;
       iunlock(f->ip);
     }
+    // cprintf("Read bytes: %d\n", r);
     return r;
   }
   panic("fileread");
@@ -150,15 +152,22 @@ filewrite(struct file *f, char *addr, int n)
         n1 = max;
 
       begin_op();
-      if (f->ip != (struct inode *) 0x80112a24){
+      if (f->ip != (struct inode *) 0x80111a24){
         // If not found in cache, readIntoPageCache and write to page cache
         // readIntoPageCache basically makes sure that the page will be in the cache
         // writeToPageCache makes sure that only the page cache is written to and nothing else
-        cprintf("Should write: %d %d\n", f->off, n);
+        cprintf("Should write: %d %d %x %d\n", f->off, n, f->ip, myproc()->pid);
         int prot = f->readable?PROT_READ:0 | f->writable?PROT_WRITE:0;
         struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
         // You should have gotten the appropriate pages into your page cache by now
         r = writeToPageCache(map, addr, f->off, n1);
+        f->off += r;
+        if(n > 0 && f->off > f->ip->size){
+          f->ip->size = f->off;
+          iupdate(f->ip);
+        }
+        cprintf("written\n");
+        // cprintf("r: %d\n", r);
       } else{
         ilock(f->ip);
         if ((r = writei(f->ip, addr + i, f->off, n1)) > 0)

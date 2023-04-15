@@ -217,7 +217,7 @@ fork(void)
   for(i = 0; i < NOMAPS; i++)
     if(curproc->maps[i] && curproc->maps[i]->ref){
       if (curproc->maps[i]->anonMaps){
-        cprintf("Anonymous %x\n", curproc->maps[i]->start);
+        // cprintf("Anonymous %x\n", curproc->maps[i]->start);
       }
       np->maps[i] = mmapdup(curproc->maps[i]);
     }
@@ -248,12 +248,12 @@ exit(void)
 
   if(curproc == initproc)
     panic("init exiting");
-
+  
+  cprintf("pid: %d\n", curproc->pid);
   for (int md = 0; md<NOMAPS; md++){
     if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
-      cprintf("############################\n");
+      cprintf("Cleaning...\n");
       cleanUpVMA(curproc->maps[md]);
-      cprintf("############################\n");
       curproc->maps[md] = 0;
     }
   }

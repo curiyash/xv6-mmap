@@ -455,7 +455,7 @@ int sys_mmap(void){
 		return -1;
 	}
 	if (argint(2,&prot) < 0 || argint(3,&flags) < 0 || argfd(4,&fd,&fp) < 0 || argint(5,&offset) < 0){
-    cprintf("This caused the issue\n");
+    // cprintf("This caused the issue\n");
 		return -1;
 	}
 	// cprintf("%s %d %d %d %d %d\n", addr, length, prot, flags, fd, offset);

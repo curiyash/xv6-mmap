@@ -2,41 +2,80 @@
 #include "stat.h"
 #include "user.h"
 #include "fs.h"
-#include "mman.h"
+// #include "mman.h"
+#include "fcntl.h"
 
-int main(int argc, char *argv[]){
-	// declare and define all params
-	printf(1, "Hola\n");
-	void *addr = 0;
-	unsigned int length = 8192;
-	int prot=PROT_READ | PROT_WRITE, flags=MAP_SHARED, fd=0, offset=0;
+char buf[8192];
 
-	fd = open("README", O_RDWR);
+void
+fourfiles(void)
+{
+  int fd, pid, i, j, n, total, pi;
+  char *names[] = { "f0", "f1", "f2", "f3" };
+  char *fname;
 
-	// Idea is to map as MAP_ANON
-	char *ret = mmap(addr, length, prot, flags, fd, offset);
+  printf(1, "fourfiles test\n");
 
-	printf(1, "char: %c %c\n", ret[0], ret[4096]);
+  for(pi = 0; pi < 4; pi++){
+    fname = names[pi];
+    unlink(fname);
 
-	ret[0] = 'z';
+    pid = fork();
+    if(pid < 0){
+      printf(1, "fork failed\n");
+      exit();
+    }
 
-	// printf(1, "char: %c\n", ret[0]);
-	// printf(1, "############################\n");
-	// ret[0] = 'a';
+    if(pid == 0){
+      fd = open(fname, O_CREATE | O_RDWR);
+      if(fd < 0){
+        printf(1, "create failed\n");
+        exit();
+      }
 
-	// munmap(ret, 4096);
-	munmap(ret+4096, 4096);
+      memset(buf, '0'+pi, 512);
+      for(i = 0; i < 12; i++){
+        if((n = write(fd, buf, 500)) != 500){
+          printf(1, "write failed %d\n", n);
+          exit();
+        }
+      }
+      exit();
+    }
+  }
 
-	printf(1, "char: %c\n", ret[4096]);
-	printf(1, "char: %c\n", ret[0]);
-	printf(1, "Hello\n");
+  for(pi = 0; pi < 4; pi++){
+    wait();
+  }
 
-	// close(fd);
-	exit();
+  printf(1, "!!!!!!!!!!!!!!! In parent\n");
+
+  for(i = 0; i < 2; i++){
+    fname = names[i];
+    fd = open(fname, 0);
+    total = 0;
+    while((n = read(fd, buf, sizeof(buf))) > 0){
+      for(j = 0; j < n; j++){
+        if(buf[j] != '0'+i){
+          printf(1, "wrong char\n");
+          exit();
+        }
+      }
+      total += n;
+    }
+    close(fd);
+    printf(1, "total: %d\n", total);
+    if(total != 12*500){
+      printf(1, "wrong length %d\n", total);
+      exit();
+    }
+    unlink(fname);
+  }
+
+  printf(1, "fourfiles ok\n");
 }
 
-// Should segfault
-// map -> unmap -> access => segfault
-void test1(){
-
+int main(int argc, char *argv[]){
+	fourfiles();
+	exit();
 }
