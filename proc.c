@@ -317,10 +317,6 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
-        // for (int i=0; i<NOMAPS; i++){
-        //   p->maps[i] = 0;
-        // }
-        // Write dirty pages back to disk regardless of ref count
         release(&ptable.lock);
         return pid;
       }

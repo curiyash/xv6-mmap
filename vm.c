@@ -316,7 +316,6 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
 // Free a page table and all the physical memory pages
 // in the user part.
-// TODO: Don't free the pages containing our maps if the reference count is greater than 1
 void
 freevm(pde_t *pgdir)
 {
@@ -1305,9 +1304,20 @@ int munmap_helper(void *addr, unsigned int length){
   return 0;
 }
 
-int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
+void handleMapFault(char *addr){
+  struct mmapInfo *vma = 0;
+  struct proc *currproc = myproc();
+  
+  for (int i=0; i<NOMAPS; i++){
+    struct mmapInfo *map = currproc->maps[i];
+    if (map && map->start <= addr && addr < map->end){
+      vma = map;
+      break;
+    }
+  }
+
   pte_t *pte;
-  if (( pte = walkpgdir(pgdir, (void *) addr, 0)) == 0){
+  if (( pte = walkpgdir(currproc->pgdir, (void *) addr, 0)) == 0){
     panic("Something's wrong");
   }
   if (*pte & PTE_P){
@@ -1318,11 +1328,11 @@ int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
         // 1. Alloc new pages over the same range
         // 2. Clear the initial page table entries with correct permissions
         vma->actualFlags |= PTE_W;
-        mmapAllocUvm(pgdir, vma, 1, addr);
+        mmapAllocUvm(currproc->pgdir, vma, 1, addr);
         vma->actualFlags &= ~PTE_W;
         // 3. Flush TLB: Reload the base register cr3
         // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
-        return 0;
+        return;
       }
     }
   } else{
@@ -1331,25 +1341,25 @@ int handleMapFault(pde_t *pgdir, char *addr, struct mmapInfo *vma){
 
     // Allocate PTEs
     int status;
-    if (( status = mmapAllocUvm(pgdir, vma, 0, addr)) < 0 ){
-      return -1;
+    if (( status = mmapAllocUvm(currproc->pgdir, vma, 0, addr)) < 0 ){
+      return;
     }
 
     if (!(vma->flags & MAP_ANONYMOUS)){
       // Load the pages
       int written;
       ilock(m->f->ip);
-      if (( written = mmapLoadUvm(pgdir, m, vma, 0, addr)) < 0){
+      if (( written = mmapLoadUvm(currproc->pgdir, m, vma, 0, addr)) < 0){
         iunlock(m->f->ip);
-        return -1;
+        return;
       }
       iunlock(m->f->ip);
-      return 0;
+      return;
     } else{
-      return 0;
+      return;
     }
   }
-  return -1;
+  return;
 }
 
 void clear(pde_t *pgdir, struct mmapInfo *m){

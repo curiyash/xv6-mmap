@@ -39,11 +39,11 @@ void smswo(){
      if (ret != (char *) 0xffffffff){
         // ret[0] = 'r';
         // printf(1, "ert: %c\n", ret[0]);
-        // if (ret[0] == 'x'){
-        // } else{
-        //     printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
-        //     exit();
-        // }
+        if (ret[0] == 'x'){
+        } else{
+            printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
+            exit();
+        }
     } else{
         printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
         exit();
