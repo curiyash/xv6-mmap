@@ -10,6 +10,7 @@
 int
 exec(char *path, char **argv)
 {
+  cprintf("Commit\n");
   char *s, *last;
   int i, off;
   uint argc, sz, sp, ustack[3+MAXARG+1];

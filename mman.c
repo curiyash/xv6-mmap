@@ -32,13 +32,14 @@ fourfiles(void)
         printf(1, "create failed\n");
         exit();
       }
-
+      int t = 0;
       memset(buf, '0'+pi, 512);
       for(i = 0; i < 12; i++){
         if((n = write(fd, buf, 500)) != 500){
           printf(1, "write failed %d\n", n);
           exit();
         }
+        t += n;
       }
       exit();
     }
@@ -48,24 +49,23 @@ fourfiles(void)
     wait();
   }
 
-  printf(1, "!!!!!!!!!!!!!!! In parent\n");
-
-  for(i = 0; i < 2; i++){
+  for(i = 0; i < 4; i++){
     fname = names[i];
     fd = open(fname, 0);
     total = 0;
     while((n = read(fd, buf, sizeof(buf))) > 0){
       for(j = 0; j < n; j++){
+        printf(1, "%d ", j);
         if(buf[j] != '0'+i){
-          printf(1, "Should've been %c but is %c\n", '0'+i, buf[j]);
+          printf(1, "%c %c\n", buf[j], '0' + i);
           printf(1, "wrong char\n");
           exit();
         }
       }
+      printf(1, "\n");
       total += n;
     }
     close(fd);
-    printf(1, "total: %d\n", total);
     if(total != 12*500){
       printf(1, "wrong length %d\n", total);
       exit();
@@ -76,7 +76,65 @@ fourfiles(void)
   printf(1, "fourfiles ok\n");
 }
 
+void
+sharedfd(void)
+{
+  int fd, pid, i, n, nc, np;
+  char buf[10];
+
+  printf(1, "sharedfd test\n");
+
+  unlink("sharedfd");
+  fd = open("sharedfd", O_CREATE|O_RDWR);
+  if(fd < 0){
+    printf(1, "fstests: cannot open sharedfd for writing");
+    return;
+  }
+  pid = fork();
+  memset(buf, pid==0?'c':'p', sizeof(buf));
+  printf(1, "writing\n");
+  for(i = 0; i < 100; i++){
+    printf(1, "i: %d %s\n", i, buf);
+    if(write(fd, buf, sizeof(buf)) != sizeof(buf)){
+      printf(1, "fstests: write sharedfd failed\n");
+      break;
+    }
+  }
+  printf(1, "child exiting\n");
+  if(pid == 0)
+    exit();
+  else
+    wait();
+  close(fd);
+  fd = open("sharedfd", 0);
+  if(fd < 0){
+    printf(1, "fstests: cannot open sharedfd for reading\n");
+    return;
+  }
+  nc = np = 0;
+  printf(1, "reading\n");
+  while((n = read(fd, buf, sizeof(buf))) > 0){
+    for(i = 0; i < sizeof(buf); i++){
+      if(buf[i] == 'c')
+        nc++;
+      if(buf[i] == 'p')
+        np++;
+    }
+    printf(1, "########\n");
+  }
+  close(fd);
+  // unlink("sharedfd");
+  printf(1, "%d %d\n", nc, np);
+  if(nc == 1000 && np == 1000){
+    printf(1, "sharedfd ok\n");
+  } else {
+    printf(1, "sharedfd oops %d %d\n", nc, np);
+    exit();
+  }
+}
+
 int main(int argc, char *argv[]){
 	fourfiles();
+  // sharedfd();
 	exit();
 }

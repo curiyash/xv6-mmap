@@ -217,7 +217,6 @@ fork(void)
   for(i = 0; i < NOMAPS; i++)
     if(curproc->maps[i] && curproc->maps[i]->ref){
       if (curproc->maps[i]->anonMaps){
-        // cprintf("Anonymous %x\n", curproc->maps[i]->start);
       }
       np->maps[i] = mmapdup(curproc->maps[i]);
     }
@@ -249,10 +248,8 @@ exit(void)
   if(curproc == initproc)
     panic("init exiting");
   
-  cprintf("pid: %d\n", curproc->pid);
   for (int md = 0; md<NOMAPS; md++){
     if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
-      cprintf("Cleaning...\n");
       cleanUpVMA(curproc->maps[md]);
       curproc->maps[md] = 0;
     }
@@ -372,6 +369,7 @@ scheduler(void)
       p->state = RUNNING;
 
       swtch(&(c->scheduler), p->context);
+      // cprintf("ncli oioioi: %d\n", mycpu()->ncli);
       switchkvm();
 
       // Process is done running for now.
@@ -398,8 +396,10 @@ sched(void)
 
   if(!holding(&ptable.lock))
     panic("sched ptable.lock");
-  if(mycpu()->ncli != 1)
+  // cprintf("ncli: %d\n", mycpu()->ncli);
+  if(mycpu()->ncli != 1){
     panic("sched locks");
+  }
   if(p->state == RUNNING)
     panic("sched running");
   if(readeflags()&FL_IF)

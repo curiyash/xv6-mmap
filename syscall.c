@@ -70,7 +70,6 @@ argptr(int n, char **pp, int size)
     return -1;
   // QUESTION: Shouldn't I also have a check for (uint)i + size > i?
   // QUESTION: Do I need more checks here?
-  // cprintf("proc size: %d\n", curproc->sz);
   if(size_corr < 0 || (uint)i >= curproc->sz || (uint)i+size_corr > curproc->sz || (uint)i+size_corr < i)
     return -1;
   *pp = (char*)i;

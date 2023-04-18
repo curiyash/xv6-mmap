@@ -477,12 +477,15 @@ sharedfd(void)
   }
   pid = fork();
   memset(buf, pid==0?'c':'p', sizeof(buf));
+  printf(1, "writing\n");
   for(i = 0; i < 1000; i++){
+    printf(1, "i: %d\n", i);
     if(write(fd, buf, sizeof(buf)) != sizeof(buf)){
       printf(1, "fstests: write sharedfd failed\n");
       break;
     }
   }
+  printf(1, "child exiting\n");
   if(pid == 0)
     exit();
   else
@@ -494,6 +497,7 @@ sharedfd(void)
     return;
   }
   nc = np = 0;
+  printf(1, "reading\n");
   while((n = read(fd, buf, sizeof(buf))) > 0){
     for(i = 0; i < sizeof(buf); i++){
       if(buf[i] == 'c')
@@ -504,6 +508,7 @@ sharedfd(void)
   }
   close(fd);
   unlink("sharedfd");
+  printf(1, "%d %d\n", nc, np);
   if(nc == 10000 && np == 10000){
     printf(1, "sharedfd ok\n");
   } else {
@@ -571,7 +576,6 @@ fourfiles(void)
       total += n;
     }
     close(fd);
-    printf(1, "total: %d\n", total);
     if(total != 12*500){
       printf(1, "wrong length %d\n", total);
       exit();
