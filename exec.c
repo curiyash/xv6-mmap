@@ -10,7 +10,6 @@
 int
 exec(char *path, char **argv)
 {
-  cprintf("Commit\n");
   char *s, *last;
   int i, off;
   uint argc, sz, sp, ustack[3+MAXARG+1];
@@ -93,8 +92,6 @@ exec(char *path, char **argv)
     if(*s == '/')
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
-
-  // cprintf("Done with preparing stack\n");
 
   // Commit to the user image.
   oldpgdir = curproc->pgdir;

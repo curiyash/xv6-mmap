@@ -109,7 +109,7 @@ fileread(struct file *f, char *addr, int n)
   if(f->type == FD_INODE){
     if (f->ip!=(struct inode *) 0x80111a24){
       int prot = f->readable?PROT_READ:0 | f->writable?PROT_WRITE:0;
-      cprintf("Should read %d bytes from %d offset\n", n, f->off);
+      // cprintf("Should read %d bytes from %d offset\n", n, f->off);
       struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
       r = readFromPageCache(map, addr, f->off, n);
       f->off += r;
@@ -150,22 +150,19 @@ filewrite(struct file *f, char *addr, int n)
         n1 = max;
 
       if (f->ip != (struct inode *) 0x80111a24){
-        cprintf("Hellllooo\n");
         // If not found in cache, readIntoPageCache and write to page cache
         // readIntoPageCache basically makes sure that the page will be in the cache
         // writeToPageCache makes sure that only the page cache is written to and nothing else
         int prot = f->readable?PROT_READ:0 | f->writable?PROT_WRITE:0;
         struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
         // You should have gotten the appropriate pages into your page cache by now
-        cprintf("%x\n", map);
+        // cprintf("%x\n", map);
         r = writeToPageCache(map, addr, f->off, n1);
-        cprintf("%d r: %d\n", f->off, r);
-        ilock(f->ip);
+        // cprintf("%d r: %d\n", f->off, r);
         if (f->off + n > map->f->ip->size){
           map->f->ip->size = f->off + n;
         f->off += r;
         }
-        iunlock(f->ip);
       } else{
         begin_op();
         ilock(f->ip);

@@ -103,7 +103,7 @@ trap(struct trapframe *tf)
       // We are writing to a read-only page
       int status = handleMapFault(currproc->pgdir, faultedOn, m);
       if (status==0){
-        cprintf("Faulted\n");
+        // cprintf("Faulted\n");
         lcr3(( (uint) currproc->pgdir ) - KERNBASE);
         break;
       } else{

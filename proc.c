@@ -284,6 +284,7 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  cprintf("I called sched\n");
   sched();
   panic("zombie exit");
 }
@@ -332,6 +333,7 @@ wait(void)
     }
 
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    cprintf("sleeping\n");
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
   }
 }
@@ -415,6 +417,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
+  cprintf("yield called sched\n");
   sched();
   release(&ptable.lock);
 }
@@ -467,6 +470,7 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+  cprintf("sleep called sched\n");
   sched();
 
   // Tidy up.
