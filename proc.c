@@ -214,12 +214,12 @@ fork(void)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
   
-  for(i = 0; i < NOMAPS; i++)
-    if(curproc->maps[i] && curproc->maps[i]->ref){
-      if (curproc->maps[i]->anonMaps){
-      }
-      np->maps[i] = mmapdup(curproc->maps[i]);
-    }
+  // for(i = 0; i < NOMAPS; i++)
+  //   if(curproc->maps[i] && curproc->maps[i]->ref){
+  //     if (curproc->maps[i]->anonMaps){
+  //     }
+  //     np->maps[i] = mmapdup(curproc->maps[i]);
+  //   }
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
@@ -248,12 +248,12 @@ exit(void)
   if(curproc == initproc)
     panic("init exiting");
   
-  for (int md = 0; md<NOMAPS; md++){
-    if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
-      cleanUpVMA(curproc->maps[md]);
-      curproc->maps[md] = 0;
-    }
-  }
+  // for (int md = 0; md<NOMAPS; md++){
+  //   if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
+  //     cleanUpVMA(curproc->maps[md]);
+  //     curproc->maps[md] = 0;
+  //   }
+  // }
 
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
@@ -277,14 +277,15 @@ exit(void)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
       p->parent = initproc;
-      if(p->state == ZOMBIE)
+      if(p->state == ZOMBIE){
+        cprintf("I was here\n");
         wakeup1(initproc);
+      }
     }
   }
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
-  cprintf("I called sched\n");
   sched();
   panic("zombie exit");
 }
@@ -329,7 +330,6 @@ wait(void)
     }
 
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
-    cprintf("sleeping\n");
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
   }
 }
@@ -413,7 +413,6 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
-  cprintf("yield called sched\n");
   sched();
   release(&ptable.lock);
 }
@@ -466,7 +465,6 @@ sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
-  cprintf("sleep called sched\n");
   sched();
 
   // Tidy up.

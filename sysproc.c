@@ -47,6 +47,7 @@ sys_sbrk(void)
 {
   int addr;
   int n;
+  cprintf("I'm here\n");
 
   if(argint(0, &n) < 0)
     return -1;

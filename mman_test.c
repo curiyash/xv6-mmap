@@ -11,7 +11,7 @@
 void smsro(){
     int fd = open("README", 0);
 
-    char *ret = mmap(0, 4096, PROT_READ, MAP_SHARED, fd, 0);
+    char *ret = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
 
     if (ret != (char *) 0xffffffff){
         if (ret[0] == 'x'){
@@ -24,36 +24,62 @@ void smsro(){
         exit();
     }
 
-    // if (munmap(ret, 4096) == -1){
-    //     printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
-    //     exit();
-    // }
+    if (munmap(ret, 4096) == -1){
+        printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
+        exit();
+    }
     printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
 }
 
 void smswo(){
     int fd = open("README", O_RDWR);
 
-    char *ret = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    char *ret = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 4096);
 
      if (ret != (char *) 0xffffffff){
-        // ret[0] = 'r';
-        // printf(1, "ert: %c\n", ret[0]);
-        if (ret[0] == 'x'){
+        ret[0] = 'r';
+        if (ret[0]=='r'){
+
         } else{
             printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
-            exit();
         }
     } else{
         printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
         exit();
     }
 
-    // if (munmap(ret, 4096) == -1){
-    //     printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
-    //     exit();
-    // }
+    if (munmap(ret, 4096) == -1){
+        printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
+        exit();
+    }
     printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
+}
+
+void smsno(){
+    // No access to the mapped page
+    // PROT_NONE and MAP_SHARED doesn't make sense. You allocate the page in pte, but don't load anything. There is no region of memory. It's just inaccessible
+    int fd = open("README", O_RDWR);
+
+    char *ret = mmap(0, 4096, PROT_READ, MAP_SHARED, fd, 0);
+    char *ret2 = mmap(0, 4096, PROT_NONE, MAP_SHARED, fd, 4096);
+    char *ret3 = mmap(0, 4096, PROT_READ, MAP_SHARED, fd, 8192);
+
+
+     if (ret != MAP_FAILED && ret2 != MAP_FAILED && ret3 !=MAP_FAILED){
+        // Should pagefault
+        printf(1, "0th char: %c | 8192th char: %c\n", ret[0], ret3[1]);
+        printf(1, "This should page fault and never return\n");
+        printf(1, "%c\n", ret2[0]);
+    } else{
+        printf(1, "mmap fail\n");
+        exit();
+    }
+
+    if (munmap(ret, 4096) == -1 && munmap(ret2, 4096) == -1 && munmap(ret3, 4096) == -1){
+        printf(1, "munmap fail\n");
+        exit();
+    }
+    printf(1, "PROT_NONE check fail\n");
 }
 
 void leftVMAtest(){
@@ -171,10 +197,27 @@ int heloo(){
     return 0;
 }
 
+void sanity_check(){
+    int fd = open("README", 0);
+
+    char c[1000];
+    read(fd, c, 1000);
+    printf(1, "%c\n", c[0]);
+    // read(fd, buf, 4096);
+    // read(fd, buf, 4096);
+    // printf(1, "%c\n", buf[0]);
+}
+
 int main(){
-    printf(1, "smsro\n");
-    smsro();
-    smswo();
+    // smsro();
+    // smswo();
+    // if (fork()==0){
+    //     smsno();
+    // } else{
+    //     wait();
+    //     printf(1, "PROT_NONE ok\n");
+    // }
+    sanity_check();
     // leftVMAtest();
     // rightVMAtest();
     // sandwichTest();

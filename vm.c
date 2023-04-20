@@ -362,30 +362,30 @@ copyuvm(pde_t *pgdir, uint sz)
   // If this address lies in the range of a map, handle it by pointing mem to the correct page. Or best, don't map it only. Let it page fault. Ensure but pte is with correct permissions. Map Private should be marked as Read-only, that's it. Set the AVL bit to some value, we have three bits for the purpose. Let's set them to an alternating pattern of 101
   // Actual flags of VMA never change, so processes can share VMAs as well. Need refCount on vma
   // Nullify pte
-  struct proc *currproc = myproc();
-  int pid = currproc->pid;
-  if (pid != 1 && pid!=2){
-    for (int i=0; i<NOMAPS; i++){
-      struct mmapInfo *vma = currproc->maps[i];
-      // Get a new VMA, set the appropriate flags
-      if (vma && vma->ref){
-        // Get the pte, mark the AVL bits]
-        char *start = vma->start;
-        char *end = (char *) PGROUNDUP((uint) vma->end);
-        char *a = start;
-        for (; a < end; a += PGSIZE){
-          if ( (pte = walkpgdir(pgdir, a, 0)) == 0){
-            panic("copyuvm: pte should exist");
-          }
-          if (!(*pte & PTE_P)){
-            continue;
-          }
-          *pte |= PTE_AVL;
-          *pte &= ~PTE_P;
-        }
-      }
-    }
-  }
+  // struct proc *currproc = myproc();
+  // int pid = currproc->pid;
+  // if (pid != 1 && pid!=2){
+  //   for (int i=0; i<NOMAPS; i++){
+  //     struct mmapInfo *vma = currproc->maps[i];
+  //     // Get a new VMA, set the appropriate flags
+  //     if (vma && vma->ref){
+  //       // Get the pte, mark the AVL bits]
+  //       char *start = vma->start;
+  //       char *end = (char *) PGROUNDUP((uint) vma->end);
+  //       char *a = start;
+  //       for (; a < end; a += PGSIZE){
+  //         if ( (pte = walkpgdir(pgdir, a, 0)) == 0){
+  //           panic("copyuvm: pte should exist");
+  //         }
+  //         if (!(*pte & PTE_P)){
+  //           continue;
+  //         }
+  //         *pte |= PTE_AVL;
+  //         *pte &= ~PTE_P;
+  //       }
+  //     }
+  //   }
+  // }
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
@@ -530,8 +530,8 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload, char *faultedAd
       if ( (pte = walkpgdir(pgdir, (void *) a, 0)) == 0){
         panic("Drunken walk\n");
       }
-      *pte = 0;
       memmove(mem, physicalPages[mappingPagesFrom], PGSIZE);
+      *pte = 0;
     }
     if (!reload && !physicalPages[mappingPagesFrom]){
       memset(mem, 0, PGSIZE);
@@ -539,7 +539,7 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload, char *faultedAd
     } else if (!reload && physicalPages[mappingPagesFrom]){
       mem = physicalPages[mappingPagesFrom];
     }
-    // cprintf("Allocating %x\n", mem);
+    cprintf("Allocating %x %x %d %d %d\n", a, mem, vma->actualFlags & PTE_P, vma->actualFlags & PTE_W, vma->actualFlags & PTE_U);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), vma->actualFlags | anonFlag) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, (uint) end, (uint) start);
@@ -597,6 +597,10 @@ struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int
     }
   }
 
+  if (vma->prot == PROT_NONE){
+    vma->actualFlags = PTE_U;
+  }
+
   return vma;
 }
 
@@ -629,6 +633,7 @@ int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reloa
     firstPageIndex = (int) (faultedAddr - m->start) / PGSIZE;
     numPages = 1;
     sz = min(numPages*PGSIZE, map->f->ip->size - firstPageIndex*PGSIZE);
+    cprintf("sz: %d\n", sz);
     offset = firstPageIndex * PGSIZE;
     pageNum = firstPageIndex;
   }
@@ -636,6 +641,7 @@ int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reloa
   if((uint) addr % PGSIZE != 0)
     panic("loaduvm: addr must be page aligned");
   for(i = 0; i < sz; i += PGSIZE){
+    cprintf("Yo\n");
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
     pa = PTE_ADDR(*pte);
@@ -646,12 +652,9 @@ int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reloa
       else
         n = PGSIZE;
       int written;
-      // cprintf("Reading...\n");s
       if(( written = readi(map->f->ip, P2V(pa), offset+i, n) ) != n){
-        end_op();
         return -1;
       }
-      // cprintf("Reading...\n");
     }
     map->ref[pageNum]++;
     pageNum++;
@@ -931,7 +934,10 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     // Check if fd prot and map prot are compatible
     int fileProt = m->f->readable?1:0 | m->f->writable?2:0;
     if ( (fileProt & prot) == 0){
-      return (void *) 0xffffffff;
+      if (prot == PROT_NONE){
+      } else{
+        return (void *) 0xffffffff;
+      }
     }
   } else{
     // This is anonymous mapping
@@ -1014,12 +1020,12 @@ int writeToDisk(struct mmapInfo *vma, int pageIndex){
     int n1 = n - i;
     if(n1 > max)
       n1 = max;
-    // begin_op();
+    begin_op();
     ilock(m->f->ip);
     if ((r = writei(m->f->ip, addr + i, m->f->off, n1)) > 0)
       m->f->off += r;
     iunlock(m->f->ip);
-    // end_op();
+    end_op();
     if(r < 0)
       break;
     if(r != n1)
@@ -1260,6 +1266,7 @@ int munmap_helper(void *addr, unsigned int length){
           *pte = 0;
         }
       }
+      // THIS IS DOUBTFUL
       *pte = 0;
       pageIndex++;
       lcr3(V2P(currproc->pgdir));
@@ -1307,6 +1314,7 @@ int munmap_helper(void *addr, unsigned int length){
 void handleMapFault(char *addr){
   struct mmapInfo *vma = 0;
   struct proc *currproc = myproc();
+  cprintf("Handling pagefault %x\n", addr);
   
   for (int i=0; i<NOMAPS; i++){
     struct mmapInfo *map = currproc->maps[i];
@@ -1320,6 +1328,13 @@ void handleMapFault(char *addr){
   if (( pte = walkpgdir(currproc->pgdir, (void *) addr, 0)) == 0){
     panic("Something's wrong");
   }
+  if (!vma){
+    // We shouldn't be handling this
+    cprintf("Paging fault\n");
+    exit();
+    return;
+  }
+
   if (*pte & PTE_P){
     if (*pte & PTE_W){
       panic("There shouldn't have been any fault\n");
@@ -1336,6 +1351,11 @@ void handleMapFault(char *addr){
       }
     }
   } else{
+    if (vma->prot == PROT_NONE){
+      cprintf("vma->actualFlags: %d %d %d\n", vma->actualFlags & PTE_P, vma->actualFlags & PTE_W, vma->actualFlags & PTE_U);
+      exit();
+      return;
+    }
     struct legend2 *m = vma->pages;
     // Use the VMA
 
