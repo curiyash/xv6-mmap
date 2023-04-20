@@ -275,25 +275,180 @@ void smp(){
 void msf(){
     int fd = open("README", O_RDWR);
     if (fork()==0){
-        char *child_map = mmap(0, 4096, PROT_WRITE, MAP_SHARED, fd, 0);
-        child_map[0] = 'z';
+        char *child_map = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+        char c[12] = "child writes";
+        memmove(child_map, c, 12);
         sleep(5);
+        memmove(c, child_map, 12);
+        if (!strcmp(c, "child writes")){
+        } else{
+            printf(1, "MAP_SHARED fail\n");
+            return;
+        }
+        memmove(c, &child_map[12], 12);
+        if (!strcmp(c, "paren writes")){
+        } else {
+            printf(1, "MAP_SHARED fail\n");
+            return;
+        }
         printf(1, "Child exiting...\n");
+        exit();
     } else{
-        char *parent_map = mmap(0, 4096, PROT_READ, MAP_SHARED, fd, 0);
-        printf(1, "Before: %c\n", parent_map[0]);
+        char p[13];
+        char *parent_map;
+        
+        parent_map = mmap(0, 4096, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         sleep(2);
-        printf(1, "After child has written: %c\n", parent_map[0]);
+        
+        memmove(p, parent_map, 12);
+        p[12] = '\0';
+        if (!strcmp(p, "child writes")){
+        } else{
+            printf(1, "MAP_SHARED fail\n");
+            return;
+        }
+        strcpy(p, "paren writes");
+        memmove(&parent_map[12], p, 12);
         sleep(10);
+        printf(1, "MAP_SHARED ok\n");
     }
-    exit();
 }
+
+// MAP_PRIVATE test with fork
+void mpf(){
+    int fd = open("TEST", O_RDWR);
+    if (fork() == 0){
+        char c[512];
+        for (int i=0; i<512; i++){
+            c[i] = 'c';
+        }
+        char *child_map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+        if (child_map == MAP_FAILED){
+            printf(1, "mmap failed\n");
+            return;
+        }
+        sleep(4);
+        printf(1, "char: %c\n", child_map[0]);
+        memmove(child_map, c, 512);
+
+        int count = 0;
+        for (int i=0; i<512; i++){
+            if (child_map[i]=='c'){
+                count++;
+            }
+        }
+        if (count!=512){
+            printf(1, "MAP_PRIVATE fail\n");
+            return;
+        }
+        exit();
+    } else{
+        char c[512];
+        for (int i=0; i<512; i++){
+            c[i] = 'p';
+        }
+        char *parent_map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (parent_map == MAP_FAILED){
+            printf(1, "mmap failed\n");
+            return;
+        }
+        for (int i=0; i<8; i++){
+            memmove(parent_map + i*512, c, 512);
+        }
+        sleep(10);
+        memmove(c, parent_map, 512);
+        int count = 0;
+        for (int i=0; i<512; i++){
+            if (c[i]=='p'){
+                count++;
+            }
+        }
+        if (count!=512){
+            printf(1, "MAP_PRIVATE fail\n");
+            return;
+        }
+        printf(1, "MAP_PRIVATE ok\n");
+    }
+}
+
+// MAP ANONYMOUS test
+
+// Concurrency test
+void concurrency(){
+}
+
+// Do the maps get correctly carried across fork?
+void forkTestMapShared(){
+    // MAP_SHARED
+    int fd = open("TEST", O_RDWR);
+    char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+    if (map == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        return;
+    }
+
+    printf(1, "%c\n", map[0]);
+
+    if (fork() == 0){
+        printf(1, "In child, initially: %c\n", map[0]);
+        map[0] = 'c';
+        map[1] = 'd';
+    } else{
+        sleep(2);
+        printf(1, "In parent: %c\n", map[0]);
+        if (map[0]=='c'){
+            printf(1, "char: %c\n", map[1]);
+        } else{
+            printf(1, "fork test fail\n");
+            return;
+        }
+    }
+    printf(1, "fork test ok\n");
+}
+
+void forkTestMapPrivate(){
+    // MAP_SHARED
+    int fd = open("TEST", O_RDWR);
+    char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+
+    if (map == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        return;
+    }
+
+    // pagefault 1
+    printf(1, "%c\n", map[0]);
+    // Parent has done changes before fork. This is mapped privately. But child will see the change
+    // pagefault 2: copy-on-write
+    map[0] = 'p';
+
+    if (fork() == 0){
+        // pagefault 3
+        printf(1, "In child, initially: %c\n", map[0]);
+        // pagefault 4: copy-on-write
+        map[0] = 'c';
+        map[1] = 'd';
+    } else{
+        sleep(2);
+        printf(1, "In parent: %c\n", map[0]);
+        if (map[0]=='p'){
+            printf(1, "char: %c\n", map[1]);
+        } else{
+            printf(1, "fork test fail\n");
+            return;
+        }
+    }
+    printf(1, "fork test ok\n");
+}
+
+// Everything, Everywhere (Wrong) All At Once
 
 int main(){
     // smsro();
     // smswo();
     // smsno();
-    // smp();
+    smp();
     // if (fork()==0){
     //     smsno();
     // } else{
@@ -304,6 +459,9 @@ int main(){
     // leftVMAtest();
     // rightVMAtest();
     // sandwichTest();
-    msf();
+    // msf();
+    // mpf();
+    // forkTestMapShared();
+    // forkTestMapPrivate();
     exit();
 }

@@ -214,12 +214,12 @@ fork(void)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
   
-  // for(i = 0; i < NOMAPS; i++)
-  //   if(curproc->maps[i] && curproc->maps[i]->ref){
-  //     if (curproc->maps[i]->anonMaps){
-  //     }
-  //     np->maps[i] = mmapdup(curproc->maps[i]);
-  //   }
+  for(i = 0; i < NOMAPS; i++)
+    if(curproc->maps[i] && curproc->maps[i]->ref){
+      if (curproc->maps[i]->anonMaps){
+      }
+      np->maps[i] = mmapdup(curproc->maps[i]);
+    }
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));

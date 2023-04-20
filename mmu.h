@@ -96,8 +96,12 @@ struct segdesc {
 #define PTE_W           0x002   // Writeable
 #define PTE_U           0x004   // User
 #define PTE_PS          0x080   // Page Size
-#define PTE_AVL         0x0a00   // AVL bits for use in copyuvm
-#define PTE_ANON        0x0400   // Mark the page as ANON
+#define PTE_AVL         0x0a00  // AVL bits for use in copyuvm
+#define PTE_SKIP        0x0600  // Skip the page present check for current process
+#define PTE_PRIVATE     0x0400  // PRIVATE page handling
+#define PTE_ANON        0x0400  // Mark the page as ANON
+
+#define PTE_META(pte)        ((((uint)(pte) >> 8) & 0x0f))
 
 // Address in page table or page directory entry
 #define PTE_ADDR(pte)   ((uint)(pte) & ~0xFFF)

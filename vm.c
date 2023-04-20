@@ -93,7 +93,14 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
       return -1;
     if(*pte & PTE_P)
       panic("remap");
-    *pte = pa | perm | PTE_P;
+    if (PTE_META(*pte) == (PTE_PRIVATE >> 8)){
+      cprintf("In mappages, private\n");
+      *pte &= ~PTE_W;
+      *pte |= PTE_P;
+      *pte &= ~PTE_PRIVATE;
+    } else{
+      *pte = pa | perm | PTE_P;
+    }
     if(a == last)
       break;
     a += PGSIZE;
@@ -362,41 +369,63 @@ copyuvm(pde_t *pgdir, uint sz)
   // If this address lies in the range of a map, handle it by pointing mem to the correct page. Or best, don't map it only. Let it page fault. Ensure but pte is with correct permissions. Map Private should be marked as Read-only, that's it. Set the AVL bit to some value, we have three bits for the purpose. Let's set them to an alternating pattern of 101
   // Actual flags of VMA never change, so processes can share VMAs as well. Need refCount on vma
   // Nullify pte
-  // struct proc *currproc = myproc();
-  // int pid = currproc->pid;
-  // if (pid != 1 && pid!=2){
-  //   for (int i=0; i<NOMAPS; i++){
-  //     struct mmapInfo *vma = currproc->maps[i];
-  //     // Get a new VMA, set the appropriate flags
-  //     if (vma && vma->ref){
-  //       // Get the pte, mark the AVL bits]
-  //       char *start = vma->start;
-  //       char *end = (char *) PGROUNDUP((uint) vma->end);
-  //       char *a = start;
-  //       for (; a < end; a += PGSIZE){
-  //         if ( (pte = walkpgdir(pgdir, a, 0)) == 0){
-  //           panic("copyuvm: pte should exist");
-  //         }
-  //         if (!(*pte & PTE_P)){
-  //           continue;
-  //         }
-  //         *pte |= PTE_AVL;
-  //         *pte &= ~PTE_P;
-  //       }
-  //     }
-  //   }
-  // }
+  struct proc *currproc = myproc();
+  int pid = currproc->pid;
+  if (pid != 1 && pid!=2){
+    for (int i=0; i<NOMAPS; i++){
+      struct mmapInfo *vma = currproc->maps[i];
+      // Get a new VMA, set the appropriate flags
+      if (vma && vma->ref){
+        // Get the pte, mark the AVL bits]
+        char *start = vma->start;
+        char *end = (char *) PGROUNDUP((uint) vma->end);
+        char *a = start;
+        for (; a < end; a += PGSIZE){
+          if ( (pte = walkpgdir(pgdir, a, 0)) == 0){
+            panic("copyuvm: pte should exist");
+          }
+          if (!(*pte & PTE_P)){
+            *pte |= PTE_SKIP;
+            continue;
+          }
+          if (vma->flags & MAP_PRIVATE){
+            cprintf("##################\n");
+            *pte |= PTE_PRIVATE;
+            *pte &= ~PTE_P;
+          } else{
+            *pte |= PTE_AVL;
+            *pte &= ~PTE_P;
+          }
+        }
+      }
+    }
+  }
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P)){
-      if (*pte & PTE_AVL){
-          *pte |=  PTE_P;
-          *pte &= ~PTE_AVL;
-          continue;
+      cprintf("Meta: %d\n", PTE_META(*pte));
+      if (PTE_META(*pte)==(PTE_AVL >> 8)){
+        cprintf("Reuusing %d\n", PTE_META(*pte));
+        *pte |=  PTE_P;
+        *pte &= ~PTE_AVL;
+        continue;
+      } else if (PTE_META(*pte)==(PTE_PRIVATE >> 8)){
+        cprintf("PRIVATE!\n");
+        pte_t *newPte;
+        if ((newPte = walkpgdir(d, (void *) i, 0)) == 0){
+          panic("Copying MAP_PRIVATE went wrong");
+        }
+        *newPte = *pte;
+        *pte |= PTE_P;
+        *pte &= ~PTE_PRIVATE;
+      } else if (*pte & PTE_SKIP){
+        *pte &= ~PTE_SKIP;
+        continue;
       }
-      panic("copyuvm: page not present");
+      // panic("copyuvm: page not present");
+      continue;
     }
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
@@ -531,7 +560,7 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload, char *faultedAd
       if ( (pte = walkpgdir(pgdir, (void *) a, 0)) == 0){
         panic("Drunken walk\n");
       }
-      memmove(mem, physicalPages[mappingPagesFrom], PGSIZE);
+      memmove(mem, P2V(PTE_ADDR(*pte)), PGSIZE);
       *pte = 0;
     }
     if (!reload && !physicalPages[mappingPagesFrom]){
@@ -1015,6 +1044,19 @@ int writeToDisk(struct mmapInfo *vma, int pageIndex){
       // Skip
     } else{
       n = min((uint) vma->end - PGROUNDDOWN((uint) vma->end), PGSIZE);
+      // int checkForHole = 0;
+      // int lastByteWritten = 0;
+      // int hole = 1;
+      // // Or till the actual number of bytes written. Was there an intentions to create a hole?
+      // for (int i=0; i<PGSIZE; i++){
+      //   if (addr[i]=='\0'){
+      //     lastByteWritten = i;
+      //     checkForHole = 1;
+      //   }
+      //   if (checkForHole && addr[i]!='\0'){
+      //     hole = 1;
+      //   }
+      // }
     }
   }
   int r = 0;
@@ -1345,6 +1387,7 @@ void handleMapFault(char *addr){
       panic("There shouldn't have been any fault\n");
     } else{
       if (vma->prot & PROT_WRITE){
+        // This would only happen for MAP_PRIVATE maps
         // 1. Alloc new pages over the same range
         // 2. Clear the initial page table entries with correct permissions
         vma->actualFlags |= PTE_W;

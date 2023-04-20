@@ -1,0 +1,6 @@
+- length in mmap parameter is used as an explicit understanding of number of bytes of the last page to be written back to the file
+- I had 2 choices in deciding what to do with maps across fork
+    - page fault and accordingly get the code in each child and fork
+    - If page fault occurs before fork and in parent, then it is directly accessible in child process (does not involve a page fault)
+
+    - I chose 1st because that seems to be more space conservative and fits naturally into the flow of the code
