@@ -81,6 +81,7 @@ trap(struct trapframe *tf)
     // If payheed, then only handle, else this is not what we are capable of
     char *faultedOn = (char *) rcr2();
     handleMapFault(faultedOn);
+    switchuvm(myproc());
     break;
 
   //PAGEBREAK: 13

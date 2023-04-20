@@ -112,7 +112,6 @@ fileread(struct file *f, char *addr, int n)
     //   // cprintf("Should read %d bytes from %d offset\n", n, f->off);
     //   struct legend2 *map = readIntoPageCache(0, n, prot, MAP_SHARED, f, f->off);
     //   r = readFromPageCache(map, addr, f->off, n);
-      cprintf("Normal file read\n");
     //   f->off += r;
     // } else{
       ilock(f->ip);

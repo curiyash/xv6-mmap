@@ -248,12 +248,12 @@ exit(void)
   if(curproc == initproc)
     panic("init exiting");
   
-  // for (int md = 0; md<NOMAPS; md++){
-  //   if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
-  //     cleanUpVMA(curproc->maps[md]);
-  //     curproc->maps[md] = 0;
-  //   }
-  // }
+  for (int md = 0; md<NOMAPS; md++){
+    if (curproc->maps[md] && curproc->maps[md]->ref >= 1){
+      cleanUpVMA(curproc->maps[md]);
+      curproc->maps[md] = 0;
+    }
+  }
 
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){

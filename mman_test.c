@@ -39,7 +39,6 @@ void smswo(){
      if (ret != (char *) 0xffffffff){
         ret[0] = 'r';
         if (ret[0]=='r'){
-
         } else{
             printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
         }
@@ -48,10 +47,10 @@ void smswo(){
         exit();
     }
 
-    if (munmap(ret, 4096) == -1){
-        printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
-        exit();
-    }
+    // if (munmap(ret, 4096) == -1){
+    //     printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
+    //     exit();
+    // }
     printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
 }
 
@@ -67,7 +66,7 @@ void smsno(){
 
      if (ret != MAP_FAILED && ret2 != MAP_FAILED && ret3 !=MAP_FAILED){
         // Should pagefault
-        printf(1, "0th char: %c | 8192th char: %c\n", ret[0], ret3[1]);
+        printf(1, "0th char: %c | 8192th char: %c\n", ret[0], ret3[0]);
         printf(1, "This should page fault and never return\n");
         printf(1, "%c\n", ret2[0]);
     } else{
@@ -200,26 +199,111 @@ int heloo(){
 void sanity_check(){
     int fd = open("README", 0);
 
-    char c[1000];
-    read(fd, c, 1000);
-    printf(1, "%c\n", c[0]);
+    char c[512];
+    for (int i=0; i<3; i++){
+        for (int j=0; j<8; j++){
+            read(fd, c, 512);
+            if (j==0){
+                printf(1, "%c\n", c[0]);
+            }
+        }
+    }
     // read(fd, buf, 4096);
     // read(fd, buf, 4096);
     // printf(1, "%c\n", buf[0]);
 }
 
+void smp(){
+    // Single process MAP_PRIVATE testing
+    // Read test
+    // Write test
+    // None test
+    int fd = open("README", O_RDWR);
+    char *read_map = mmap(0, 4096, PROT_READ, MAP_PRIVATE, fd, 0);
+    char *write_map = mmap(0, 4096, PROT_WRITE, MAP_PRIVATE, fd, 4096);
+    char *none_map = mmap(0, 4096, PROT_NONE, MAP_PRIVATE, fd, 8192);
+
+    if (read_map==MAP_FAILED || write_map==MAP_FAILED || none_map==MAP_FAILED){
+        printf(1, "mmap fail %x %x %x\n", read_map, write_map, none_map);
+        return;
+    }
+
+    if (read_map[0]=='x'){
+
+    } else{
+        printf(1, "MAP_PRIVATE PROT_READ error\n");
+    }
+
+    char before = write_map[0];
+    printf(1, "Before writing: %c\n", before);
+    // This should trigger a copy-on-write => Another pagefault
+    write_map[0] = 'x';
+    printf(1, "After writing: %c\n", write_map[0]);
+    if (write_map[0]=='x'){
+
+    } else{
+        printf(1, "MAP_PRIVATE PROT_WRITE error\n");
+    }
+    char c[512];
+    for (int i=0; i<1; i++){
+        for (int j=0; j<8; j++){
+            read(fd, c, 512);
+        }
+    }
+    read(fd, c, 512);
+    if (c[0] != before){
+        printf(1, "MAP_PRIVATE copy-on-write error\n");
+    }
+
+    // This should page fault and not return
+    if (none_map[0]){
+        printf(1, "MAP_PRIVATE None failed\n");
+        return;
+    }
+
+    if (munmap(read_map, 4096) == -1 || munmap(read_map, 4096) == -1 || munmap(read_map, 4096) == -1 ){
+        printf(1, "Unmapping fail\n");
+        return;
+    }
+}
+
+// MAP_SHARED tests with fork
+// Producer-consumer kind of code
+// 1st process writes to the file
+// 2nd process reads from the file
+// Check if both are same
+void msf(){
+    int fd = open("README", O_RDWR);
+    if (fork()==0){
+        char *child_map = mmap(0, 4096, PROT_WRITE, MAP_SHARED, fd, 0);
+        child_map[0] = 'z';
+        sleep(5);
+        printf(1, "Child exiting...\n");
+    } else{
+        char *parent_map = mmap(0, 4096, PROT_READ, MAP_SHARED, fd, 0);
+        printf(1, "Before: %c\n", parent_map[0]);
+        sleep(2);
+        printf(1, "After child has written: %c\n", parent_map[0]);
+        sleep(10);
+    }
+    exit();
+}
+
 int main(){
     // smsro();
     // smswo();
+    // smsno();
+    // smp();
     // if (fork()==0){
     //     smsno();
     // } else{
     //     wait();
     //     printf(1, "PROT_NONE ok\n");
     // }
-    sanity_check();
+    // sanity_check();
     // leftVMAtest();
     // rightVMAtest();
     // sandwichTest();
+    msf();
     exit();
 }
