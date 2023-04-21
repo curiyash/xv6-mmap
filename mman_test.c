@@ -505,6 +505,59 @@ void forkTestMapPrivate(){
     printf(1, "fork test ok\n");
 }
 
+void mapPrivateCorrectness(){
+    int fd = open("README", O_RDWR);
+    char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    printf(1, "char: %c\n", map[0]);
+    map[0] = 'c';
+
+    if (fork() == 0){
+        sleep(500);
+        printf(1, "char: %c\n", map[0]);
+    } else{
+        wait();
+    }
+}
+
+// MAP_ANONYMOUS
+void sma(){
+    char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    char *map2 = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+    if (map == MAP_FAILED || map2 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    memmove(map2, "pppp", 4);
+
+    if (fork() == 0){
+        for (int i=0; i < 20; i++){
+            if (i % 2 == 0){
+                memmove(&map[i], "c", 1);
+            }
+        }
+        printf(1, "char child: %c\n", map[0]);
+        printf(1, "private map: %s\n", map2);
+        exit();
+    } else {
+        for (int i=0; i < 20; i++){
+            if (i % 2 == 1){
+                memmove(&map[i], "p", 1);
+            }
+        }
+        printf(1, "char parent: %c\n", map[1]);
+        wait();
+        int countC = 0, countP = 0;
+        for (int i=0; i < 4096; i++){
+            switch(map[i]){
+                case 'c': countC++; break;
+                case 'p': countP++; break;
+                default: break;
+            }
+        }
+        printf(1, "child: %d | parent: %d\n", countC, countP);
+    }
+}
+
 // Everything, Everywhere (Wrong) All At Once
 
 int main(){
@@ -527,5 +580,7 @@ int main(){
     // forkTestMapShared();
     // forkTestMapPrivate();
     // concurrency();
+    // mapPrivateCorrectness();
+    sma();
     exit();
 }

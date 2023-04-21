@@ -378,6 +378,7 @@ copyuvm(pde_t *pgdir, uint sz)
       struct mmapInfo *vma = currproc->maps[i];
       // Get a new VMA, set the appropriate flags
       if (vma && vma->ref){
+        cprintf("%x %x %x %x\n", vma->pages, vma->anonMaps, vma->start, vma->end);
         // Get the pte, mark the AVL bits]
         char *start = vma->start;
         char *end = (char *) PGROUNDUP((uint) vma->end);
@@ -387,6 +388,7 @@ copyuvm(pde_t *pgdir, uint sz)
             panic("copyuvm: pte should exist");
           }
           if (!(*pte & PTE_P)){
+            cprintf("SkipeedSkipeedSkipeedSkipeedSkipeedSkipeedSkipeedSkipeed\n");
             *pte |= PTE_SKIP;
             continue;
           }
@@ -394,14 +396,10 @@ copyuvm(pde_t *pgdir, uint sz)
             *pte |= PTE_PRIVATE;
             *pte &= ~PTE_P;
           } else{
+            cprintf("#-#-#-#-#-#-#-#-#-#-#_#-#_#\n");
             *pte |= PTE_AVL;
             *pte &= ~PTE_P;
           }
-        }
-        if (vma->pages){
-          vma->pages->mapRef++;
-        } else if (vma->anonMaps){
-          vma->anonMaps->ref++;
         }
       }
     }
@@ -427,6 +425,7 @@ copyuvm(pde_t *pgdir, uint sz)
         *pte |= PTE_P;
         *pte &= ~PTE_PRIVATE;
       } else if (*pte & PTE_SKIP){
+        cprintf("#############################\n");
         *pte &= ~PTE_SKIP;
         continue;
       }
@@ -695,7 +694,6 @@ int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reloa
       panic("loaduvm: address should exist");
     pa = PTE_ADDR(*pte);
     // If the page was not in the cache
-    cprintf("Reference count of page: %d\n", map->ref[pageNum]);
     if (!map->ref[pageNum]){
       if(sz - i < PGSIZE)
         n = sz - i;
@@ -944,6 +942,7 @@ int writeToPageCache(struct legend2 *map, char *addr, int offset, int length){
 int mmapAssignProc(struct proc *currproc, struct mmapInfo *vma){
   for (int i=0; i < NOMAPS; i++){
     if (!currproc->maps[i] || currproc->maps[i]->ref == 0){
+      cprintf("i: %d\n", i);
       currproc->maps[i] = vma;
       return 0;
     }
@@ -1004,14 +1003,16 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     // This is anonymous mapping
     // Get a struct anon from anonCache
     acquire(&anonCache.lock);
-    for (int i=0; i<NOMAPS; i++){
-      if (anonCache.anonMaps->ref == 0){
+    for (int i=0; i<NMAPS; i++){
+      if (anonCache.anonMaps[i].ref == 0){
         anonMap = &anonCache.anonMaps[i];
         break;
       }
     }
 
     if (!anonMap){
+      cprintf("!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+      release(&anonCache.lock);
       return (void *) 0xffffffff;
     }
 
@@ -1176,7 +1177,8 @@ void cleanUpVMA(struct mmapInfo *vma){
   pte_t *pteIndex;
   char *addr = vma->start;
   acquire(&mtable.lock);
-  if (vma->flags & (~MAP_ANONYMOUS)){
+  cprintf("----------------------- %d ------------------------\n", vma->flags & (MAP_ANONYMOUS));
+  if ((vma->flags & (MAP_ANONYMOUS)) == 0){
     if (vma->flags & MAP_SHARED){
       // Use MAXPAGES if any process can write other processes' changes to the file back to disk
       printVMAStatistics(vma);
@@ -1218,24 +1220,30 @@ void cleanUpVMA(struct mmapInfo *vma){
     } else{
       vma->ref--;
       vma->pages->mapRef--;
+      cprintf("---------------------- mapRef: %d ----------------------\n", vma->pages->mapRef);
       if (vma->ref == 0){
         if (vma->pages->mapRef == 0){
+          cprintf("Freed map\n");
           freeMap(vma->pages, 0);
         }
+        cprintf("Freed VMA\n");
         freeVMA(vma);
       } else{
         clearPTE(currproc->pgdir, vma->start, vma->numPages);
       }
     }
   } else{
+    cprintf("cleaningcleaningcleaningcleaningcleaningcleaningcleaningcleaningcleaning\n");
     vma->ref--;
     vma->anonMaps->ref--;
     if (vma->ref==0){
       if (vma->anonMaps->ref == 0){
         freeAnon(vma->anonMaps, 1);
       }
+      cprintf("Freed VMA\n");
       freeVMA(vma);
     } else{
+      cprintf("Clearing PTE\n");
       clearPTE(currproc->pgdir, vma->start, vma->numPages);
     }
   }

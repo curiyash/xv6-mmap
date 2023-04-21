@@ -9,9 +9,15 @@
 
 int main(){
     int fd = open("README", O_RDWR);
-    char *ret = mmap(0, 1, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    char *ret = mmap(0, 1, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
     ret[0] = 'c';
-    ret[1] = 'd';
+
+    if (fork() == 0){
+        sleep(2);
+        printf("%c\n", ret[0]);
+    } else{
+        exit(0);
+    }
     munmap(ret, 4096);
     return 0;
 }
