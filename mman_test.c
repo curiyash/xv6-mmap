@@ -384,48 +384,39 @@ void concurrency(){
 
     if (fork() == 0){
         // a
-        // if (fork() == 0){
-        //     // b
-        //     for (int i=0; i < 4096; i++){
-        //         if (i%3 == 1){
-        //             printf(1, "Writing b\n");
-        //             map[i] = 'b';
-        //         }
-        //     }
-        //     printf(1, "\n");
-        //     exit();
-        // } else{
-            printf(1, "In child %c %c\n", map[0], map[1]);
+        if (fork() == 0){
+            // b
             for (int i=0; i < 20; i++){
-                if (i%2==0){
+                if (i%3 == 0){
                     memmove(&map[i], "a", 1);
                 }
             }
-
-            int countA = 0;
+            printf(1, "\n");
+            exit();
+        } else{
+            printf(1, "In child %c %c\n", map[0], map[1]);
             for (int i=0; i < 20; i++){
-                if (i%2==0){
-                    if (map[i] == 'a'){
-                        countA++;
-                    }
+                if (i%3==1){
+                    memmove(&map[i], "b", 1);
                 }
             }
-            printf(1, "Count a: %d\n", countA);
+
             printf(1, "Child exited\n");
             exit();
-        // }
+        }
     } else{
         // c
         printf(1, "In parent %c\n", map[1]);
         for (int i=0; i<20; i++){
-            if (i % 2 == 1){
+            if (i%3 == 2){
                 memmove(&map[i], "c", 1);
             }
         }
     }
 
     int pid = wait();
-    printf(1, "pid: %d\n", pid);
+    int pid2 = wait();
+    printf(1, "pid: %d | pid2: %d\n", pid, pid2);
     int countA = 0, countB = 0, countC = 0, weird = 0;
     for (int i=0; i < 20; i++){
         switch(map[i]){
@@ -535,6 +526,6 @@ int main(){
     // mpf();
     // forkTestMapShared();
     // forkTestMapPrivate();
-    concurrency();
+    // concurrency();
     exit();
 }

@@ -1070,9 +1070,6 @@ int writeToDisk(struct mmapInfo *vma, int pageIndex){
     panic("Should have had a legend\n");
   }
 
-  cprintf("-----------------------------------------------------\n");
-  cprintf("%s\n", m->physicalPages[pageIndex]);
-
   m->f->off = pageIndex * PGSIZE;
 
   if (pageIndex==vma->firstPageIndex+vma->numPages-1){
