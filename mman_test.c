@@ -375,6 +375,57 @@ void mpf(){
 
 // Concurrency test
 void concurrency(){
+    int fd = open("TEST", O_RDWR);
+    char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED){
+        printf(1, "mmap failed\n");
+        return;
+    }
+
+    if (fork() == 0){
+        // a
+        if (fork() == 0){
+            // b
+            for (int i=0; i < 4096; i++){
+                if (i%3 == 1){
+                    printf(1, "1.%d ", i);
+                    map[i] = 'b';
+                }
+            }
+            printf(1, "\n");
+            // exit();
+        } else{
+            for (int i=0; i < 4096; i++){
+                if (i%3==0){
+                    printf(1, "2.%d ", i);
+                    map[i] = 'a';
+                }
+            }
+            printf(1, "\n");
+            // exit();
+        }
+    } else{
+        // c
+        for (int i=0; i<4096; i++){
+            if (i % 3 == 2){
+                printf(1, "3.%d ", i);
+                map[i] = 'c';
+            }
+        }
+        printf(1, "\n");
+        wait();
+        wait();
+        int countA = 0, countB = 0, countC = 0, weird = 0;
+        for (int i=0; i < 4096; i++){
+            switch(map[i]){
+                case 'a': countA++; break;
+                case 'b': countB++; break;
+                case 'c': countC++; break;
+                default: weird++; break;
+            }
+        }
+        printf(1, "%d %d %d %d\n", countA, countB, countC, weird);
+    }
 }
 
 // Do the maps get correctly carried across fork?
@@ -448,7 +499,7 @@ int main(){
     // smsro();
     // smswo();
     // smsno();
-    smp();
+    // smp();
     // if (fork()==0){
     //     smsno();
     // } else{
@@ -463,5 +514,6 @@ int main(){
     // mpf();
     // forkTestMapShared();
     // forkTestMapPrivate();
+    concurrency();
     exit();
 }

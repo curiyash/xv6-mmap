@@ -19,17 +19,19 @@ int mmapAssignProc(struct proc *currproc, struct mmapInfo *vma);
 
 // General map cache
 struct {
-  // struct spinlock lock;
+  struct spinlock lock;
   struct legend2 maps[NMAPS];
 } mmapCache;
 
 // Anonymous map cache
 struct {
+  struct spinlock lock;
   struct anon anonMaps[NMAPS];
 } anonCache;
 
 // mmapInfo structs
 struct {
+  struct spinlock lock;
   struct mmapInfo info[NMAPS];
 } mtable;
 
@@ -522,6 +524,9 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload, char *faultedAd
   int anonFlag = 0;
   char *end, *start;
 
+  cprintf("Taking mmapCache.lock\n");
+  acquire(&mmapCache.lock);
+  cprintf("Taken mmapCache.lock\n");
   if (m){
     physicalPages = m->physicalPages;
   } else if (am){
@@ -552,6 +557,7 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload, char *faultedAd
       if(mem == 0){
         cprintf("allocuvm out of memory\n");
         deallocuvm(pgdir, (uint) end, (uint) start);
+        release(&mmapCache.lock);
         return -1;
       }
     }
@@ -573,26 +579,31 @@ int mmapAllocUvm(pde_t *pgdir, struct mmapInfo *vma, int reload, char *faultedAd
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, (uint) end, (uint) start);
       kfree(mem);
+      release(&mmapCache.lock);
       return -1;
     }
     mappingPagesFrom++;
   }
-
+  release(&mmapCache.lock);
   return 0;
 }
 
 struct legend2 *mmapAlloc(){
+  acquire(&mmapCache.lock);
   for (int i=0; i<NMAPS; i++){
     if (mmapCache.maps[i].mapRef == 0){
+      release(&mmapCache.lock);
       return &mmapCache.maps[i];
     }
   }
+  release(&mmapCache.lock);
   return 0;
 }
 
 struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int offset, int length, int prot, int flags){
   int numPages = (PGROUNDUP(offset + length) - PGROUNDDOWN(offset)) / PGSIZE;
 
+  acquire(&mtable.lock);
   struct mmapInfo *vma = 0;
   for (int i=0; i<NMAPS; i++){
     if (mtable.info[i].ref==0){
@@ -629,6 +640,7 @@ struct mmapInfo *mmapAssign(struct legend2 *m, struct anon *am, char *start, int
   if (vma->prot == PROT_NONE){
     vma->actualFlags = PTE_U;
   }
+  release(&mtable.lock);
 
   return vma;
 }
@@ -651,6 +663,7 @@ int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reloa
   int pageNum;
   char *addr;
   int firstPageIndex, numPages;
+  cprintf("----------------------------\n");
 
   if (!faultedAddr){
     addr = m->start;
@@ -688,10 +701,12 @@ int mmapLoadUvm(pde_t *pgdir, struct legend2 *map, struct mmapInfo *m, int reloa
     map->ref[pageNum]++;
     pageNum++;
   }
+  cprintf("###############################\n");
   return 0;
 }
 
 struct legend2 *findInCache(struct file *f){
+  acquire(&mmapCache.lock);
   struct legend2 *old;
   struct legend2 *m = 0;
 
@@ -703,11 +718,12 @@ struct legend2 *findInCache(struct file *f){
       }
     }
   }
-
+  release(&mmapCache.lock);
   return m;
 }
 
 void freeVMA(struct mmapInfo *vma){
+  acquire(&mtable.lock);
   vma->start = 0;
   vma->end = 0;
   vma->firstPageIndex = -1;
@@ -717,6 +733,7 @@ void freeVMA(struct mmapInfo *vma){
   vma->pages = 0;
   vma->ref = 0;
   vma->anonMaps = 0;
+  release(&mtable.lock);
 }
 
 int readFromPageCache(struct legend2 *m, char *addr, int offset, int length){
@@ -972,6 +989,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
   } else{
     // This is anonymous mapping
     // Get a struct anon from anonCache
+    acquire(&anonCache.lock);
     for (int i=0; i<NOMAPS; i++){
       if (anonCache.anonMaps->ref == 0){
         anonMap = &anonCache.anonMaps[i];
@@ -984,6 +1002,7 @@ void *mmap_helper(void *addr, unsigned int length, int prot, int flags, int fd, 
     }
 
     anonMap->ref++;
+    release(&anonCache.lock);
     offset = 0;
   }
 
@@ -1361,8 +1380,9 @@ int munmap_helper(void *addr, unsigned int length){
 void handleMapFault(char *addr){
   struct mmapInfo *vma = 0;
   struct proc *currproc = myproc();
+
+  acquire(&mtable.lock);
   cprintf("Handling pagefault %x\n", addr);
-  
   for (int i=0; i<NOMAPS; i++){
     struct mmapInfo *map = currproc->maps[i];
     if (map && map->start <= addr && addr < map->end){
@@ -1370,6 +1390,7 @@ void handleMapFault(char *addr){
       break;
     }
   }
+  release(&mtable.lock);
 
   pte_t *pte;
   if (( pte = walkpgdir(currproc->pgdir, (void *) addr, 0)) == 0){
@@ -1390,24 +1411,22 @@ void handleMapFault(char *addr){
         // This would only happen for MAP_PRIVATE maps
         // 1. Alloc new pages over the same range
         // 2. Clear the initial page table entries with correct permissions
+        acquire(&mtable.lock);
         vma->actualFlags |= PTE_W;
         mmapAllocUvm(currproc->pgdir, vma, 1, addr);
         vma->actualFlags &= ~PTE_W;
         // 3. Flush TLB: Reload the base register cr3
         // 4. Should I clear the map? Need to experiment with actual mmap You don't need to keep track of the private mappings
+        release(&mtable.lock);
         return;
       }
     }
   } else{
     if (vma->prot == PROT_NONE){
-      cprintf("vma->actualFlags: %d %d %d\n", vma->actualFlags & PTE_P, vma->actualFlags & PTE_W, vma->actualFlags & PTE_U);
       exit();
       return;
     }
     struct legend2 *m = vma->pages;
-    // Use the VMA
-
-    // Allocate PTEs
     int status;
     if (( status = mmapAllocUvm(currproc->pgdir, vma, 0, addr)) < 0 ){
       return;
