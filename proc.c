@@ -277,10 +277,8 @@ exit(void)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->parent == curproc){
       p->parent = initproc;
-      if(p->state == ZOMBIE){
-        cprintf("I was here\n");
+      if(p->state == ZOMBIE)
         wakeup1(initproc);
-      }
     }
   }
 

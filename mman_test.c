@@ -109,7 +109,6 @@ void rightVMAtest(){
     int fd = open("README", O_RDONLY);
 
     char *ret = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
-    printf(1, "-------------------------------------------\n");
 
     if (ret != (char *) 0xffffffff){
         if (ret[0] == 'r'){
@@ -375,6 +374,7 @@ void mpf(){
 
 // Concurrency test
 void concurrency(){
+    printf(1, "$$$$$$$$$$$$\n");
     int fd = open("TEST", O_RDWR);
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED){
@@ -384,48 +384,63 @@ void concurrency(){
 
     if (fork() == 0){
         // a
-        if (fork() == 0){
-            // b
-            for (int i=0; i < 4096; i++){
-                if (i%3 == 1){
-                    printf(1, "1.%d ", i);
-                    map[i] = 'b';
+        // if (fork() == 0){
+        //     // b
+        //     for (int i=0; i < 4096; i++){
+        //         if (i%3 == 1){
+        //             printf(1, "Writing b\n");
+        //             map[i] = 'b';
+        //         }
+        //     }
+        //     printf(1, "\n");
+        //     exit();
+        // } else{
+            printf(1, "In child %c %c\n", map[0], map[1]);
+            for (int i=0; i < 20; i++){
+                if (i%2==0){
+                    memmove(&map[i], "a", 1);
                 }
             }
-            printf(1, "\n");
-            // exit();
-        } else{
-            for (int i=0; i < 4096; i++){
-                if (i%3==0){
-                    printf(1, "2.%d ", i);
-                    map[i] = 'a';
+
+            int countA = 0;
+            for (int i=0; i < 20; i++){
+                if (i%2==0){
+                    if (map[i] == 'a'){
+                        countA++;
+                    }
                 }
             }
-            printf(1, "\n");
-            // exit();
-        }
+            printf(1, "Count a: %d\n", countA);
+            printf(1, "Child exited\n");
+            exit();
+        // }
     } else{
         // c
-        for (int i=0; i<4096; i++){
-            if (i % 3 == 2){
-                printf(1, "3.%d ", i);
-                map[i] = 'c';
+        printf(1, "In parent %c\n", map[1]);
+        for (int i=0; i<20; i++){
+            if (i % 2 == 1){
+                memmove(&map[i], "c", 1);
             }
         }
-        printf(1, "\n");
-        wait();
-        wait();
-        int countA = 0, countB = 0, countC = 0, weird = 0;
-        for (int i=0; i < 4096; i++){
-            switch(map[i]){
-                case 'a': countA++; break;
-                case 'b': countB++; break;
-                case 'c': countC++; break;
-                default: weird++; break;
-            }
-        }
-        printf(1, "%d %d %d %d\n", countA, countB, countC, weird);
     }
+
+    int pid = wait();
+    printf(1, "pid: %d\n", pid);
+    int countA = 0, countB = 0, countC = 0, weird = 0;
+    for (int i=0; i < 20; i++){
+        switch(map[i]){
+            case 'a': countA++; break;
+            case 'b': countB++; break;
+            case 'c': countC++; break;
+            default: weird++; break;
+        }
+    }
+    printf(1, "%d %d %d %d\n", countA, countB, countC, weird);
+
+    // if (munmap(map, 4096) == -1){
+    //     printf(1, "munmap fail\n");
+    //     exit();
+    // }
 }
 
 // Do the maps get correctly carried across fork?
@@ -480,6 +495,7 @@ void forkTestMapPrivate(){
         // pagefault 4: copy-on-write
         map[0] = 'c';
         map[1] = 'd';
+        exit();
     } else{
         sleep(2);
         printf(1, "In parent: %c\n", map[0]);
@@ -489,6 +505,11 @@ void forkTestMapPrivate(){
             printf(1, "fork test fail\n");
             return;
         }
+    }
+
+    if (munmap(map, 4096) == -1){
+        printf(1, "munmap fail\n");
+        exit();
     }
     printf(1, "fork test ok\n");
 }

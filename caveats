@@ -4,3 +4,7 @@
     - If page fault occurs before fork and in parent, then it is directly accessible in child process (does not involve a page fault)
 
     - I chose 1st because that seems to be more space conservative and fits naturally into the flow of the code
+- Daemons won't work well with MAP_PRIVATE
+    - As soon as parent is gone, page is gone
+    - There is no reference count as well
+    - We will have to copyVMA instead

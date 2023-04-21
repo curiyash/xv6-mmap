@@ -100,6 +100,7 @@ struct segdesc {
 #define PTE_SKIP        0x0600  // Skip the page present check for current process
 #define PTE_PRIVATE     0x0400  // PRIVATE page handling
 #define PTE_ANON        0x0400  // Mark the page as ANON
+#define PTE_DIRTY       0x0040  // Dirty bit
 
 #define PTE_META(pte)        ((((uint)(pte) >> 8) & 0x0f))
 
@@ -172,6 +173,8 @@ void unfoldMaps();
 void handleMapFault(char *addr);
 
 void cleanUpVMA(struct mmapInfo *vma);
+
+void printVMAStatistics(struct mmapInfo *vma);
 
 struct legend2 *findInCache(struct file *f);
 

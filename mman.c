@@ -120,7 +120,6 @@ sharedfd(void)
       if(buf[i] == 'p')
         np++;
     }
-    printf(1, "########\n");
   }
   close(fd);
   // unlink("sharedfd");
