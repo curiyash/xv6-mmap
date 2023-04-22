@@ -94,7 +94,6 @@ sharedfd(void)
   memset(buf, pid==0?'c':'p', sizeof(buf));
   printf(1, "writing\n");
   for(i = 0; i < 100; i++){
-    printf(1, "i: %d %s\n", i, buf);
     if(write(fd, buf, sizeof(buf)) != sizeof(buf)){
       printf(1, "fstests: write sharedfd failed\n");
       break;

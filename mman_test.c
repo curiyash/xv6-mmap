@@ -5,8 +5,6 @@
 #include "fcntl.h"
 #include "mman.h"
 
-#define n 1000
-
 // Single process, MAP_SHARED - READ_ONLY
 void smsro(){
     int fd = open("README", 0);
@@ -47,14 +45,14 @@ void smswo(){
         exit();
     }
 
-    // if (munmap(ret, 4096) == -1){
-    //     printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
-    //     exit();
-    // }
+    if (munmap(ret, 4096) == -1){
+        printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
+        exit();
+    }
     printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
 }
 
-void smsno(){
+int smsno(){
     // No access to the mapped page
     // PROT_NONE and MAP_SHARED doesn't make sense. You allocate the page in pte, but don't load anything. There is no region of memory. It's just inaccessible
     int fd = open("README", O_RDWR);
@@ -79,6 +77,7 @@ void smsno(){
         exit();
     }
     printf(1, "PROT_NONE check fail\n");
+    return -1;
 }
 
 void leftVMAtest(){
@@ -157,43 +156,43 @@ void sandwichTest(){
     printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
 }
 
-int heloo(){
-    unlink("heloo");
-    int fd = open("heloo2", O_CREATE | O_RDWR);
+// int heloo(){
+//     unlink("heloo");
+//     int fd = open("heloo2", O_CREATE | O_RDWR);
 
-    printf(1, "%d\n", fd);
-    char buf[n];
-    for (int i=0; i<n; i++){
-        buf[i] = '1';
-    }
-    for (int i=0; i < 5; i++){
-        printf(1, "%d ", i);
-        write(fd, buf, n);
-    }
-    printf(1, "\n");
-    printf(1, "Hello\n");
-    close(fd);
-    fd = open("heloo2", O_RDWR);
+//     printf(1, "%d\n", fd);
+//     char buf[n];
+//     for (int i=0; i<n; i++){
+//         buf[i] = '1';
+//     }
+//     for (int i=0; i < 5; i++){
+//         printf(1, "%d ", i);
+//         write(fd, buf, n);
+//     }
+//     printf(1, "\n");
+//     printf(1, "Hello\n");
+//     close(fd);
+//     fd = open("heloo2", O_RDWR);
 
-    int count = 0;
-    for (int i=0; i < 5; i++){
-        read(fd, buf, n);
-        for (int i=0; i < n; i++){
-            if (buf[i] == '1'){
-                count++;
-            }
-        }
-    }
-    if (count == n * 5){
-        printf(1, "mman_test ok");
-    } else{
-        printf(1, "oops %d\n", count);
-        return 1;
-    }
-    close(fd);
-    unlink("heloo2");
-    return 0;
-}
+//     int count = 0;
+//     for (int i=0; i < 5; i++){
+//         read(fd, buf, n);
+//         for (int i=0; i < n; i++){
+//             if (buf[i] == '1'){
+//                 count++;
+//             }
+//         }
+//     }
+//     if (count == n * 5){
+//         printf(1, "mman_test ok");
+//     } else{
+//         printf(1, "oops %d\n", count);
+//         return 1;
+//     }
+//     close(fd);
+//     unlink("heloo2");
+//     return 0;
+// }
 
 void sanity_check(){
     int fd = open("README", 0);
@@ -614,12 +613,148 @@ void readWriteTest(){
     }
 }
 
+void
+fourfiles(void)
+{
+    char buf[512];
+  int fd, pid, i, j, n, total, pi;
+  char *names[] = { "f0", "f1", "f2", "f3" };
+  char *fname;
+  int factor = 1;
+
+  printf(1, "fourfiles test\n");
+
+  for(pi = 0; pi < 4; pi++){
+    fname = names[pi];
+    unlink(fname);
+
+    pid = fork();
+    if(pid < 0){
+      printf(1, "fork failed\n");
+      exit();
+    }
+
+    if(pid == 0){
+      fd = open(fname, O_CREATE | O_RDWR);
+      if(fd < 0){
+        printf(1, "create failed\n");
+        exit();
+      }
+
+      memset(buf, '0'+pi, 512);
+      for(i = 0; i < factor; i++){
+        if((n = write(fd, buf, 512)) != 512){
+          printf(1, "write failed %d\n", n);
+          exit();
+        }
+      }
+      exit();
+    }
+  }
+
+  for(pi = 0; pi < 4; pi++){
+    wait();
+  }
+
+  for(i = 0; i < 2; i++){
+    fname = names[i];
+    fd = open(fname, 0);
+    total = 0;
+    while((n = read(fd, buf, sizeof(buf))) > 0 && total < 512 * factor){
+      for(j = 0; j < n; j++){
+        if(buf[j] != '0'+i){
+          printf(1, "wrong char %d %d %d\n", total, j, n);
+          exit();
+        }
+      }
+      total += n;
+    }
+    close(fd);
+    if(total != factor*512){
+      printf(1, "wrong length %d\n", total);
+      exit();
+    }
+    unlink(fname);
+  }
+
+  printf(1, "fourfiles ok\n");
+}
+
+void sharedfd(void){
+  int fd, pid, i, n, nc, np;
+  char buf[10];
+  int factor = 500;
+
+  printf(1, "sharedfd test\n");
+
+  unlink("sharedfd");
+  fd = open("sharedfd", O_CREATE|O_RDWR);
+  if(fd < 0){
+    printf(1, "fstests: cannot open sharedfd for writing");
+    return;
+  }
+  pid = fork();
+  memset(buf, pid==0?'c':'p', sizeof(buf));
+  printf(1, "writing\n");
+  for(i = 0; i < factor; i++){
+    printf(1, "i: %d\n", i);
+    if(write(fd, buf, sizeof(buf)) != sizeof(buf)){
+      printf(1, "fstests: write sharedfd failed\n");
+      break;
+    }
+  }
+  printf(1, "child exiting\n");
+  if(pid == 0)
+    exit();
+  else
+    wait();
+  close(fd);
+  fd = open("sharedfd", 0);
+  if(fd < 0){
+    printf(1, "fstests: cannot open sharedfd for reading\n");
+    return;
+  }
+  nc = np = 0;
+  printf(1, "reading\n");
+  while((n = read(fd, buf, sizeof(buf))) > 0){
+    for(i = 0; i < sizeof(buf); i++){
+      if(buf[i] == 'c')
+        nc++;
+      if(buf[i] == 'p')
+        np++;
+    }
+  }
+  close(fd);
+//   unlink("sharedfd");
+  printf(1, "%d %d\n", nc, np);
+  if(nc == 10*factor && np == 10*factor){
+    printf(1, "sharedfd ok\n");
+  } else {
+    printf(1, "sharedfd oops %d %d\n", nc, np);
+    exit();
+  }
+}
+
+void sms(){
+    // smsro();
+    smswo();
+    // int status = 0;
+    // if (fork() == 0){
+    //     status = smsno();
+    // } else{
+    //     wait();
+    //     if (status==-1){
+    //         printf(1, "MAP_SHARED PROT_NONE fail\n");
+    //     } else{
+    //         printf(1, "MAP_SHARED PROT_NONE ok\n");
+    //     }
+    // }
+}
+
 // Everything, Everywhere (Wrong) All At Once
 
 int main(){
-    // smsro();
-    // smswo();
-    // smsno();
+    sms();
     // smp();
     // if (fork()==0){
     //     smsno();
@@ -638,6 +773,8 @@ int main(){
     // concurrency();
     // mapPrivateCorrectness();
     // sma();
-    readWriteTest();
+    // readWriteTest();
+    // fourfiles();
+    // sharedfd();
     exit();
 }

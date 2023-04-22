@@ -146,6 +146,7 @@ struct mmapInfo{
   int flags;
   struct legend2 *pages;
   struct anon *anonMaps;
+  char fileOp;
   int ref;
   int actualFlags;
 };
@@ -162,7 +163,7 @@ void clearMap(struct legend2 *m);
 
 void clearAnon(struct anon *am);
 
-struct legend2 *readIntoPageCache(void *addr, unsigned int length, int prot, int flags, struct file *f, int offset);
+struct mmapInfo *readIntoPageCache(void *addr, unsigned int length, int prot, int flags, struct file *f, int offset);
 
 int readFromPageCache(struct legend2 *m, char *addr, int offset, int length);
 
@@ -175,6 +176,8 @@ void handleMapFault(char *addr);
 void cleanUpVMA(struct mmapInfo *vma);
 
 void printVMAStatistics(struct mmapInfo *vma);
+
+struct legend2 *findInCachePage(struct file *f, int offset, int length, int op);
 
 struct legend2 *findInCache(struct file *f);
 
