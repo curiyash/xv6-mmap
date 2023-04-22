@@ -206,10 +206,8 @@ void smp(char *status){
     }
 
     char before = write_map[0];
-    printf(1, "Before writing: %c\n", before);
     // This should trigger a copy-on-write => Another pagefault
     write_map[0] = 'x';
-    printf(1, "After writing: %c | But originally: %c\n", write_map[0], read_map[4096]);
     if (write_map[0]=='x'){
     } else{
         printf(1, "MAP_PRIVATE PROT_WRITE error\n");
@@ -891,17 +889,17 @@ void EveryThingEverywhereAllAtOnce(char *status){
 
 void maxVMATest(){
     // Maximum VMA that can be allotted are 10
-    char *map1 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    char *map1 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 1, 0);
     if (map1 == MAP_FAILED){
         printf(1, "mmap fail\n");
         exit();
     }
-    char *map2 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    char *map2 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 1, 0);
     if (map2 == MAP_FAILED){
         printf(1, "mmap fail\n");
         exit();
     }
-    char *map3 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    char *map3 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 1, 0);
     if (map3 == MAP_FAILED){
         printf(1, "mmap fail\n");
         exit();
@@ -945,6 +943,11 @@ void maxVMATest(){
     // This should fail
     char *map11 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
     if (map11 == MAP_FAILED){
+        int res = munmap(map1, 4096) | munmap(map2, 4096) | munmap(map3, 4096) | munmap(map4, 4096) | munmap(map5, 4096) | munmap(map6, 4096) | munmap(map7, 4096) | munmap(map8, 4096) | munmap(map9, 4096) | munmap(map10, 4096);
+        if (res == -1){
+            printf(1, "munmap fail\n");
+            exit();
+        }
         printf(1, "Max VMA test ok\n");
     } else{
         printf(1, "Max VMA test fail\n");
@@ -1023,8 +1026,9 @@ void maxVMAMunmapTest(){
 }
 
 int main(){
-    // Each test should be run singularly once
+    // Run Test Set -> make clean -> Run Next Test
 
+    /*----------------------------------------------------- Test Set 1 --------------------------------------------------*/
     // sma();
     // char *status = mmap(0, 4, PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
     // if (status == MAP_FAILED){
@@ -1038,20 +1042,33 @@ int main(){
     //     printf(1, "munmap fail\n");
     //     exit();
     // }
+    //---------------------------------------------------------------------------------------------------------------------
+
+    /*----------------------------------------------------- Test Set 2 --------------------------------------------------*/
     // leftVMAtest();
     // rightVMAtest();
     // sandwichTest();
     // msf();
     // mpf();
+    //---------------------------------------------------------------------------------------------------------------------
+
+    /*----------------------------------------------------- Test Set 3.1 --------------------------------------------------*/
+    // maxVMATest();
+    /*----------------------------------------------------- Test Set 3.2 --------------------------------------------------*/
+    // maxVMAMunmapTest();
+    //---------------------------------------------------------------------------------------------------------------------
+
+    /*----------------------------------------------------- Test Set 4 --------------------------------------------------*/
     // forkTestMapShared();
-    // forkTestMapPrivate();
     // concurrency();
-    // sleep(10);
     // mapPrivateCorrectness();
     // readWriteTest();
+    //---------------------------------------------------------------------------------------------------------------------
+
+    /*----------------------------------------------------- Test Set 5 --------------------------------------------------*/
+    // forkTestMapPrivate();
     // fourfiles();
     // sharedfd();
-    // maxVMATest();
-    // maxVMAMunmapTest();
+    //---------------------------------------------------------------------------------------------------------------------
     exit();
 }

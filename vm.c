@@ -1025,7 +1025,7 @@ void *mmap_helper(void *addr, int length, int prot, int flags, int fd, int offse
 
     if (!anonMap){
       release(&anonCache.lock);
-      return (void *) 0xffffffff;
+      return MAP_FAILED;
     }
 
     anonMap->ref++;

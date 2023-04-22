@@ -209,17 +209,18 @@ fork(void)
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
-
-  for(i = 0; i < NOFILE; i++)
-    if(curproc->ofile[i])
-      np->ofile[i] = filedup(curproc->ofile[i]);
-  
-  for(i = 0; i < NOMAPS; i++)
+  for(i = 0; i < NOMAPS; i++){
     if(curproc->maps[i] && curproc->maps[i]->ref){
       if (curproc->maps[i]->anonMaps){
       }
       np->maps[i] = mmapdup(curproc->maps[i]);
     }
+  }
+
+  for(i = 0; i < NOFILE; i++)
+    if(curproc->ofile[i])
+      np->ofile[i] = filedup(curproc->ofile[i]);
+
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
