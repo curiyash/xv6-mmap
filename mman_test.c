@@ -558,6 +558,62 @@ void sma(){
     }
 }
 
+// Read-Write consistency
+// mmap write
+// file read
+// file write
+// mmap read
+void readWriteTest(){
+    int fd = open("README", O_RDWR);
+    char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    char c[5], buf[5];
+    int pid;
+
+    if (map == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    // Initial content
+    memmove(c, map, 4);
+    c[4] = '\0';
+    printf(1, "Initial: %s\n", c);
+
+    if ((pid = fork()) == 0){
+        // mmap write
+        memmove(&map[0], "mmap", 4);
+
+        sleep(10);
+        // mmap read
+        memmove(c, &map[4], 4);
+
+        if (!strcmp(c, "file")){
+            printf(1, "File write consistency ok\n");
+        } else{
+            printf(1, "File write consistency check fail\n");
+        }
+        exit();
+    } else{
+        // fileread
+        sleep(2);
+        read(fd, buf, 4);
+        if (!strcmp(buf, "mmap")){
+            printf(1, "File read consistency ok\n");
+        } else{
+            kill(pid);
+            wait();
+            printf(1, "File read consistency check fail\n");
+            exit();
+        }
+        
+        // File write
+        memmove(buf, "file", 4);
+        write(fd, buf, 4);
+
+        int pid = wait();
+        printf(1, "pid: %d\n", pid);
+    }
+}
+
 // Everything, Everywhere (Wrong) All At Once
 
 int main(){
@@ -581,6 +637,7 @@ int main(){
     // forkTestMapPrivate();
     // concurrency();
     // mapPrivateCorrectness();
-    sma();
+    // sma();
+    readWriteTest();
     exit();
 }
