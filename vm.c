@@ -1260,7 +1260,6 @@ int munmap_helper(void *addr, unsigned int length){
   if (!addr || (PGROUNDDOWN((uint) addr) != (uint) addr )){
     return -1;
   }
-  cprintf("munmap...\n");
 
   char *roundAddr;
   struct mmapInfo *vma = 0;
@@ -1281,7 +1280,6 @@ int munmap_helper(void *addr, unsigned int length){
   }
 
   if (!vma){
-    cprintf("Not found\n");
     return 0;
   }
 
@@ -1309,7 +1307,6 @@ int munmap_helper(void *addr, unsigned int length){
     }
   } else{
     // Divide into left-and-right-side VMA
-    cprintf("Divided into 2\n");
     char *left = vma->start;
     char *leftEnd = roundAddr;
     int leftOffset = (uint) leftEnd - (uint) left;
@@ -1332,11 +1329,9 @@ int munmap_helper(void *addr, unsigned int length){
   if (leftVMA){
     // Switch the VMAs in current process
     currproc->maps[vmaIndex] = leftVMA;
-    cprintf("Assigned left\n");
 
     // Now assign the rightVMA if it exists
     if (rightVMA){
-      cprintf("Assigning right\n");
       if ((status = mmapAssignProc(currproc, rightVMA)) == -1){
         return -1;
       }
@@ -1433,7 +1428,6 @@ int munmap_helper(void *addr, unsigned int length){
   // Decrement the ref count. If the ref count is 0, free the VMA
   vma->ref--;
   if (vma->ref == 0){
-    cprintf("Freed VMA\n");
     freeVMA(vma);
   } else{
     // Assign the leftVMA and rightVMA

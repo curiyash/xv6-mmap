@@ -61,7 +61,6 @@ int smsno(){
     char *ret2 = mmap(0, 4096, PROT_NONE, MAP_SHARED, fd, 4096);
     char *ret3 = mmap(0, 4096, PROT_READ, MAP_SHARED, fd, 8192);
 
-
      if (ret != MAP_FAILED && ret2 != MAP_FAILED && ret3 !=MAP_FAILED){
         // Should pagefault
         printf(1, "0th char: %c | 8192th char: %c\n", ret[0], ret3[0]);
@@ -142,61 +141,31 @@ void sandwichTest(){
     if (ret != (char *) 0xffffffff){
         if (ret[0] == 'x'){
         } else{
-            printf(1, "117 Single process, MAP_SHARED, READ_ONLY fail\n");
+            printf(1, "Sandwich test fail\n");
             exit();
         }
     } else{
-        printf(1, "121 Single process, MAP_SHARED, READ_ONLY fail\n");
+        printf(1, "Sandwich test fail\n");
         exit();
     }
 
-    // if (munmap(ret+4096, 4096) == -1){
-    //     printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
-    //     exit();
-    // }
+    if (munmap(ret+4096, 4096) == -1){
+        printf(1, "Sandwich test fail\n");
+        exit();
+    }
     printf(1, "%c\n", ret[0]);
     printf(1, "---\n");
     printf(1, "%c\n", ret[8194]);
-    printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
+    if (munmap(ret, 4096) == -1){
+        printf(1, "Sandwich test fail\n");
+        exit();
+    }
+    if (munmap(ret+8192, 4096) == -1){
+        printf(1, "Sandwich test fail\n");
+        exit();
+    }
+    printf(1, "Sandwich test ok\n");
 }
-
-// int heloo(){
-//     unlink("heloo");
-//     int fd = open("heloo2", O_CREATE | O_RDWR);
-
-//     printf(1, "%d\n", fd);
-//     char buf[n];
-//     for (int i=0; i<n; i++){
-//         buf[i] = '1';
-//     }
-//     for (int i=0; i < 5; i++){
-//         printf(1, "%d ", i);
-//         write(fd, buf, n);
-//     }
-//     printf(1, "\n");
-//     printf(1, "Hello\n");
-//     close(fd);
-//     fd = open("heloo2", O_RDWR);
-
-//     int count = 0;
-//     for (int i=0; i < 5; i++){
-//         read(fd, buf, n);
-//         for (int i=0; i < n; i++){
-//             if (buf[i] == '1'){
-//                 count++;
-//             }
-//         }
-//     }
-//     if (count == n * 5){
-//         printf(1, "mman_test ok");
-//     } else{
-//         printf(1, "oops %d\n", count);
-//         return 1;
-//     }
-//     close(fd);
-//     unlink("heloo2");
-//     return 0;
-// }
 
 void sanity_check(){
     int fd = open("README", 0);
@@ -215,14 +184,13 @@ void sanity_check(){
     // printf(1, "%c\n", buf[0]);
 }
 
-void smp(){
+void smp(char *status){
     // Single process MAP_PRIVATE testing
     // Read test
     // Write test
     // None test
     printf(1, "smp\n");
     int fd = open("README", O_RDWR);
-    int status = 0;
     char *read_map = mmap(0, 8192, PROT_READ, MAP_PRIVATE, fd, 0);
     char *write_map = mmap(0, 4096, PROT_WRITE, MAP_PRIVATE, fd, 4096);
     char *none_map = mmap(0, 4096, PROT_NONE, MAP_PRIVATE, fd, 8192);
@@ -261,19 +229,21 @@ void smp(){
     if (fork() == 0){
         // This should page fault and not return
         printf(1, "In child\n");
+        memmove(status, "okay", 4);
         if (none_map[0]){
-            status = 1;
-            printf(1, "status: %d\n", status);
+            memmove(status, "fail", 4);
         }
         exit();
     } else{
         sleep(10);
         wait();
-        if (status){
+        char c[5];
+        c[4] = '\0';
+        memmove(c, status, 4);
+        if (strcmp(c, "okay")){
             printf(1, "MAP_PRIVATE PROT_NONE fail\n");
             exit();
         }
-        printf(1, "I'm good\n");
         if (munmap(read_map, 4096) == -1 || munmap(write_map, 4096) == -1 || munmap(none_map, 4096) == -1 ){
             printf(1, "Unmapping fail\n");
             return;
@@ -326,6 +296,10 @@ void msf(){
         memmove(&parent_map[12], p, 12);
         sleep(10);
         printf(1, "MAP_SHARED ok\n");
+        if (munmap(parent_map, 4096) == -1){
+            printf(1, "munmap fail\n");
+            exit();
+        }
     }
 }
 
@@ -354,7 +328,6 @@ void mpf(){
         }
         if (count!=512){
             printf(1, "MAP_PRIVATE fail\n");
-            return;
         }
         exit();
     } else{
@@ -382,6 +355,10 @@ void mpf(){
             printf(1, "MAP_PRIVATE fail\n");
             return;
         }
+        if (munmap(parent_map, 4096) == -1){
+            printf(1, "MAP_PRIVATE munmap fail\n");
+            exit();
+        }
         printf(1, "MAP_PRIVATE ok\n");
     }
 }
@@ -390,12 +367,12 @@ void mpf(){
 
 // Concurrency test
 void concurrency(){
-    printf(1, "$$$$$$$$$$$$\n");
-    int fd = open("TEST", O_RDWR);
+    unlink("NEW");
+    int fd = open("NEW", O_CREATE | O_RDWR);
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED){
         printf(1, "mmap failed\n");
-        return;
+        exit();
     }
 
     if (fork() == 0){
@@ -430,9 +407,10 @@ void concurrency(){
         }
     }
 
-    int pid = wait();
-    int pid2 = wait();
-    printf(1, "pid: %d | pid2: %d\n", pid, pid2);
+    while (wait() != -1){
+    }
+    while (wait() != -1){
+    }
     int countA = 0, countB = 0, countC = 0, weird = 0;
     for (int i=0; i < 20; i++){
         switch(map[i]){
@@ -451,12 +429,14 @@ void concurrency(){
     if (countA==7 && countB == 7 && countC == 6){
         printf(1, "concurrency ok\n");
     }
+    unlink("NEW");
 }
 
 // Do the maps get correctly carried across fork?
 void forkTestMapShared(){
     // MAP_SHARED
-    int fd = open("TEST", O_RDWR);
+    unlink("TEST1");
+    int fd = open("TEST1", O_CREATE | O_RDWR);
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
     if (map == MAP_FAILED){
@@ -464,12 +444,13 @@ void forkTestMapShared(){
         return;
     }
 
-    printf(1, "%c\n", map[0]);
+    printf(1, "Initially: %c\n", map[0]);
 
     if (fork() == 0){
         printf(1, "In child, initially: %c\n", map[0]);
         map[0] = 'c';
         map[1] = 'd';
+        exit();
     } else{
         sleep(2);
         printf(1, "In parent: %c\n", map[0]);
@@ -477,24 +458,30 @@ void forkTestMapShared(){
             printf(1, "char: %c\n", map[1]);
         } else{
             printf(1, "fork test fail\n");
-            return;
+            exit();
         }
     }
+
+    if (munmap(map, 4096) == -1){
+        printf(1, "forkTestMapShared munmap fail\n");
+        exit();
+    }
+    unlink("TEST1");
     printf(1, "fork test ok\n");
 }
 
 void forkTestMapPrivate(){
-    // MAP_SHARED
-    int fd = open("TEST", O_RDWR);
+    unlink("TEST2");
+    int fd = open("TEST2", O_CREATE | O_RDWR);
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 
     if (map == MAP_FAILED){
         printf(1, "mmap fail\n");
-        return;
+        exit();
     }
 
     // pagefault 1
-    printf(1, "%c\n", map[0]);
+    printf(1, "Initially: %c\n", map[0]);
     // Parent has done changes before fork. This is mapped privately. But child will see the change
     // pagefault 2: copy-on-write
     map[0] = 'p';
@@ -513,7 +500,7 @@ void forkTestMapPrivate(){
             printf(1, "char: %c\n", map[1]);
         } else{
             printf(1, "fork test fail\n");
-            return;
+            exit();
         }
     }
 
@@ -521,14 +508,15 @@ void forkTestMapPrivate(){
         printf(1, "munmap fail\n");
         exit();
     }
+    unlink("TEST2");
     printf(1, "fork test ok\n");
 }
 
 void mapPrivateCorrectness(){
-    int fd = open("README", O_RDWR);
+    unlink("NEW2");
+    int fd = open("NEW2", O_CREATE | O_RDWR);
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
     // Initial
-    printf(1, "char: %c\n", map[0]);
     map[0] = 'p';
 
     if (fork() == 0){
@@ -540,15 +528,20 @@ void mapPrivateCorrectness(){
         map[0] = 'c';
         exit();
     } else{
-        wait();
+        while (wait() != -1){
+        }
         if (map[0] =='p'){
             printf(1, "MAP_PRIVATE correctness ok\n");
         } else{
             printf(1, "MAP_PRIVATE correctness fail\n");
             exit();
         }
-        
     }
+    if (munmap(map, 4096) == -1){
+        printf(1, "MAP_PRIVATE munmap fail\n");
+        exit();
+    }
+    unlink("NEW2");
 }
 
 // MAP_ANONYMOUS
@@ -578,20 +571,24 @@ void sma(){
         }
         printf(1, "char parent: %c\n", map[1]);
         wait();
-        int countC = 0, countP = 0;
-        for (int i=0; i < 4096; i++){
-            switch(map[i]){
-                case 'c': countC++; break;
-                case 'p': countP++; break;
-                default: break;
-            }
+    }
+    int countC = 0, countP = 0;
+    for (int i=0; i < 20; i++){
+        switch(map[i]){
+            case 'c': countC++; break;
+            case 'p': countP++; break;
+            default: break;
         }
+    }
+    if (munmap(map, 4096) == -1 || munmap(map2, 4096) == -1){
+        printf(1, "munmap fail\n");
+        exit();
+    }
 
-        if ((countC == countP) && countC == 10){
-            printf(1, "MAP_ANONYMOUS ok\n");
-        } else{
-            printf(1, "MAP_ANONYMOUS fail\n");
-        }
+    if ((countC == countP) && countC == 10){
+        printf(1, "MAP_ANONYMOUS ok\n");
+    } else{
+        printf(1, "MAP_ANONYMOUS fail\n");
     }
 }
 
@@ -651,9 +648,7 @@ void readWriteTest(){
     }
 }
 
-void
-fourfiles(void)
-{
+void fourfiles(void) {
     char buf[512];
   int fd, pid, i, j, n, total, pi;
   char *names[] = { "f0", "f1", "f2", "f3" };
@@ -769,16 +764,23 @@ void sharedfd(void){
   }
 }
 
-void sms(){
+void sms(char *status){
     smsro();
     smswo();
-    int status = 0;
     if (fork() == 0){
-        status = smsno();
+        memmove(status, "okay", 4);
+        int stat = smsno();
+        if (stat == -1){
+            memmove(status, "fail", 4);
+        }
         exit();
     } else{
         wait();
-        if (status==-1){
+        char c[5];
+        c[4] = '\0';
+        memmove(c, status, 4);
+        printf(1, "%s\n", c);
+        if (strcmp(c, "okay")){
             printf(1, "MAP_SHARED PROT_NONE fail\n");
         } else{
             printf(1, "MAP_SHARED PROT_NONE ok\n");
@@ -787,11 +789,10 @@ void sms(){
 }
 
 // Everything, Everywhere (Wrong) All At Once
-void EveryThingEverywhereAllAtOnce(){
+void EveryThingEverywhereAllAtOnce(char *status){
     // Input checking
     // Incorrect open access intent and map prot
     int fd = open("README", O_RDONLY);
-    int status = 0;
 
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
     if (map == MAP_FAILED){
@@ -855,13 +856,16 @@ void EveryThingEverywhereAllAtOnce(){
     } else{
         // Trying to write to read-only map
         if (fork() == 0){
-            printf(1, "Hello\n");
+            memmove(status, "okay", 4);
             map[0] = 'a';
-            status = 1;
+            memmove(status, "fail", 4);
             exit();
         } else{
             wait();
-            if (status){
+            char c[5];
+            c[4] = '\0';
+            memmove(c, status, 4);
+            if (strcmp(c, "okay")){
                 printf(1, "Read-only write fail\n");
                 exit();
             }
@@ -1019,8 +1023,21 @@ void maxVMAMunmapTest(){
 }
 
 int main(){
-    // sms();
-    // smp();
+    // Each test should be run singularly once
+
+    // sma();
+    // char *status = mmap(0, 4, PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    // if (status == MAP_FAILED){
+    //     printf(1, "mmap fail\n");
+    //     exit();
+    // }
+    // sms(status);
+    // smp(status);
+    // EveryThingEverywhereAllAtOnce(status);
+    // if (munmap(status, 4096) == -1){
+    //     printf(1, "munmap fail\n");
+    //     exit();
+    // }
     // leftVMAtest();
     // rightVMAtest();
     // sandwichTest();
@@ -1029,13 +1046,12 @@ int main(){
     // forkTestMapShared();
     // forkTestMapPrivate();
     // concurrency();
+    // sleep(10);
     // mapPrivateCorrectness();
-    // sma();
     // readWriteTest();
     // fourfiles();
     // sharedfd();
-    // EveryThingEverywhereAllAtOnce();
     // maxVMATest();
-    maxVMAMunmapTest();
+    // maxVMAMunmapTest();
     exit();
 }
