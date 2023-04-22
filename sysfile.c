@@ -450,7 +450,6 @@ int sys_mmap(void){
 	int prot, flags, fd, offset;
 	struct file *fp;
 
-	// if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
 	if (argint(1, &length) < 0){
 		return -1;
 	}
@@ -458,10 +457,7 @@ int sys_mmap(void){
 		return -1;
 	}
 
-  // SIR: Allocate sufficient number of pages: What does this mean? From where can I get the pages exactly?
-  // ME: Find a big enough hole! (What does this mean?!)
   return (int) mmap_helper(addr, length, prot, flags, fd, offset);
-	// return 0;
 }
 
 int sys_munmap(void){
@@ -472,6 +468,5 @@ int sys_munmap(void){
 	if (argint(1, &length) < 0 || argptr(0, &addr, length) < 0){
     return -1;
   }
-  munmap_helper(addr, length);
-	return 0;
+  return munmap_helper(addr, length);
 }

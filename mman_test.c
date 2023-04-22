@@ -86,7 +86,7 @@ void leftVMAtest(){
     char *ret = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
 
      if (ret != (char *) 0xffffffff){
-        if (ret[0] == 'r'){
+        if (ret[0] == 'x'){
         } else{
             printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
             exit();
@@ -101,6 +101,10 @@ void leftVMAtest(){
         exit();
     }
     printf(1, "%c\n", ret[4096]);
+    if (munmap(ret+4096, 4096) == -1){
+        printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
+        exit();
+    }
     printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
 }
 
@@ -110,7 +114,7 @@ void rightVMAtest(){
     char *ret = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
 
     if (ret != (char *) 0xffffffff){
-        if (ret[0] == 'r'){
+        if (ret[0] == 'x'){
         } else{
             printf(1, "1 Single process, MAP_SHARED, READ_ONLY fail\n");
             exit();
@@ -216,8 +220,10 @@ void smp(){
     // Read test
     // Write test
     // None test
+    printf(1, "smp\n");
     int fd = open("README", O_RDWR);
-    char *read_map = mmap(0, 4096, PROT_READ, MAP_PRIVATE, fd, 0);
+    int status = 0;
+    char *read_map = mmap(0, 8192, PROT_READ, MAP_PRIVATE, fd, 0);
     char *write_map = mmap(0, 4096, PROT_WRITE, MAP_PRIVATE, fd, 4096);
     char *none_map = mmap(0, 4096, PROT_NONE, MAP_PRIVATE, fd, 8192);
 
@@ -227,7 +233,6 @@ void smp(){
     }
 
     if (read_map[0]=='x'){
-
     } else{
         printf(1, "MAP_PRIVATE PROT_READ error\n");
     }
@@ -236,9 +241,8 @@ void smp(){
     printf(1, "Before writing: %c\n", before);
     // This should trigger a copy-on-write => Another pagefault
     write_map[0] = 'x';
-    printf(1, "After writing: %c\n", write_map[0]);
+    printf(1, "After writing: %c | But originally: %c\n", write_map[0], read_map[4096]);
     if (write_map[0]=='x'){
-
     } else{
         printf(1, "MAP_PRIVATE PROT_WRITE error\n");
     }
@@ -252,16 +256,29 @@ void smp(){
     if (c[0] != before){
         printf(1, "MAP_PRIVATE copy-on-write error\n");
     }
+    printf(1, "Been there, Done that\n");
 
-    // This should page fault and not return
-    if (none_map[0]){
-        printf(1, "MAP_PRIVATE None failed\n");
-        return;
-    }
-
-    if (munmap(read_map, 4096) == -1 || munmap(read_map, 4096) == -1 || munmap(read_map, 4096) == -1 ){
-        printf(1, "Unmapping fail\n");
-        return;
+    if (fork() == 0){
+        // This should page fault and not return
+        printf(1, "In child\n");
+        if (none_map[0]){
+            status = 1;
+            printf(1, "status: %d\n", status);
+        }
+        exit();
+    } else{
+        sleep(10);
+        wait();
+        if (status){
+            printf(1, "MAP_PRIVATE PROT_NONE fail\n");
+            exit();
+        }
+        printf(1, "I'm good\n");
+        if (munmap(read_map, 4096) == -1 || munmap(write_map, 4096) == -1 || munmap(none_map, 4096) == -1 ){
+            printf(1, "Unmapping fail\n");
+            return;
+        }
+        printf(1, "MAP_PRIVATE ok\n");
     }
 }
 
@@ -425,12 +442,15 @@ void concurrency(){
             default: weird++; break;
         }
     }
-    printf(1, "%d %d %d %d\n", countA, countB, countC, weird);
 
-    // if (munmap(map, 4096) == -1){
-    //     printf(1, "munmap fail\n");
-    //     exit();
-    // }
+    if (munmap(map, 4096) == -1){
+        printf(1, "munmap fail\n");
+        exit();
+    }
+
+    if (countA==7 && countB == 7 && countC == 6){
+        printf(1, "concurrency ok\n");
+    }
 }
 
 // Do the maps get correctly carried across fork?
@@ -507,14 +527,27 @@ void forkTestMapPrivate(){
 void mapPrivateCorrectness(){
     int fd = open("README", O_RDWR);
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    // Initial
     printf(1, "char: %c\n", map[0]);
-    map[0] = 'c';
+    map[0] = 'p';
 
     if (fork() == 0){
-        sleep(500);
-        printf(1, "char: %c\n", map[0]);
+        if (map[0] == 'p'){
+        } else{
+            printf(1, "MAP_PRIVATE incorrect\n");
+            exit();
+        }
+        map[0] = 'c';
+        exit();
     } else{
         wait();
+        if (map[0] =='p'){
+            printf(1, "MAP_PRIVATE correctness ok\n");
+        } else{
+            printf(1, "MAP_PRIVATE correctness fail\n");
+            exit();
+        }
+        
     }
 }
 
@@ -553,7 +586,12 @@ void sma(){
                 default: break;
             }
         }
-        printf(1, "child: %d | parent: %d\n", countC, countP);
+
+        if ((countC == countP) && countC == 10){
+            printf(1, "MAP_ANONYMOUS ok\n");
+        } else{
+            printf(1, "MAP_ANONYMOUS fail\n");
+        }
     }
 }
 
@@ -683,7 +721,7 @@ fourfiles(void)
 void sharedfd(void){
   int fd, pid, i, n, nc, np;
   char buf[10];
-  int factor = 500;
+  int factor = 400;
 
   printf(1, "sharedfd test\n");
 
@@ -695,15 +733,12 @@ void sharedfd(void){
   }
   pid = fork();
   memset(buf, pid==0?'c':'p', sizeof(buf));
-  printf(1, "writing\n");
   for(i = 0; i < factor; i++){
-    printf(1, "i: %d\n", i);
     if(write(fd, buf, sizeof(buf)) != sizeof(buf)){
       printf(1, "fstests: write sharedfd failed\n");
       break;
     }
   }
-  printf(1, "child exiting\n");
   if(pid == 0)
     exit();
   else
@@ -715,7 +750,6 @@ void sharedfd(void){
     return;
   }
   nc = np = 0;
-  printf(1, "reading\n");
   while((n = read(fd, buf, sizeof(buf))) > 0){
     for(i = 0; i < sizeof(buf); i++){
       if(buf[i] == 'c')
@@ -736,33 +770,257 @@ void sharedfd(void){
 }
 
 void sms(){
-    // smsro();
+    smsro();
     smswo();
-    // int status = 0;
-    // if (fork() == 0){
-    //     status = smsno();
-    // } else{
-    //     wait();
-    //     if (status==-1){
-    //         printf(1, "MAP_SHARED PROT_NONE fail\n");
-    //     } else{
-    //         printf(1, "MAP_SHARED PROT_NONE ok\n");
-    //     }
-    // }
+    int status = 0;
+    if (fork() == 0){
+        status = smsno();
+        exit();
+    } else{
+        wait();
+        if (status==-1){
+            printf(1, "MAP_SHARED PROT_NONE fail\n");
+        } else{
+            printf(1, "MAP_SHARED PROT_NONE ok\n");
+        }
+    }
 }
 
 // Everything, Everywhere (Wrong) All At Once
+void EveryThingEverywhereAllAtOnce(){
+    // Input checking
+    // Incorrect open access intent and map prot
+    int fd = open("README", O_RDONLY);
+    int status = 0;
+
+    char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    if (map == MAP_FAILED){
+    } else{
+        printf(1, "File access and Prot check should have failed\n");
+        exit();
+    }
+
+    // Unmapping a map that doesn't exist
+    if (munmap(map, 4096) == -1){
+    } else{
+        printf(1, "Unmapping unmapped region\n");
+        exit();
+    }
+
+    // Incorrect flags
+    map = mmap(0, 1, PROT_READ, MAP_SHARED | MAP_PRIVATE, fd, 0);
+    if (map == MAP_FAILED){
+    } else{
+        printf(1, "Mapping Shared as well as Private map not allowed\n");
+        exit();
+    }
+
+    // Anonymous without Private or Shared
+    map = mmap(0, 1, PROT_READ, MAP_ANONYMOUS, fd, 0);
+    if (map == MAP_FAILED){
+    } else{
+        printf(1, "Anonymous mapping without Shared or Private flag\n");
+        exit();
+    }
+
+    // Incorrect length
+    map = mmap(0, -1, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (map == MAP_FAILED){
+    } else{
+        printf(1, "Incorrect length\n");
+        exit();
+    }
+
+    // Offset not page-aligned
+    map = mmap(0, 1, PROT_READ, MAP_PRIVATE, fd, 1);
+    if (map == MAP_FAILED){
+    } else{
+        printf(1, "Offset not page-aligned\n");
+        exit();
+    }
+
+    // Trying to map stdout
+    map = mmap(0, 1, PROT_READ, MAP_PRIVATE, 1, 1);
+    if (map == MAP_FAILED){
+    } else{
+        printf(1, "Mapped standard output: fail\n");
+        exit();
+    }
+
+    // A successful map
+    map = mmap(0, 1, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (map == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    } else{
+        // Trying to write to read-only map
+        if (fork() == 0){
+            printf(1, "Hello\n");
+            map[0] = 'a';
+            status = 1;
+            exit();
+        } else{
+            wait();
+            if (status){
+                printf(1, "Read-only write fail\n");
+                exit();
+            }
+        }
+    }
+
+    // Unmapping already unmapped map
+    if (munmap(map, 4096) == -1){
+        printf(1, "munmap fail\n");
+        exit();
+    }
+
+    /*
+        It is not an error if the indicated range does not contain any mapped pages
+    */
+    if (munmap(map, 4096) == 0){
+    } else{
+        printf(1, "munmap fail\n");
+        exit();
+    }
+    printf(1, "Everything Everywhere ok\n");
+}
+
+void maxVMATest(){
+    // Maximum VMA that can be allotted are 10
+    char *map1 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map1 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map2 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map2 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map3 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map3 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map4 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map4 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map5 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map5 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map6 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map6 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map7 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map7 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map8 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map8 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map9 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map9 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map10 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map10 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+
+    // This should fail
+    char *map11 = mmap(0, 4096, PROT_READ, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
+    if (map11 == MAP_FAILED){
+        printf(1, "Max VMA test ok\n");
+    } else{
+        printf(1, "Max VMA test fail\n");
+        exit();
+    }
+}
+
+void maxVMAMunmapTest(){
+    int fd = open("README", O_RDONLY);
+    char *map1 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map1 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map2 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map2 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map3 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map3 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map4 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map4 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map5 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map5 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map6 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map6 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map7 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map7 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map8 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map8 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map9 = mmap(0, 8192, PROT_READ, MAP_SHARED, fd, 0);
+    if (map9 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+    char *map10 = mmap(0, 4096*3, PROT_READ, MAP_SHARED, fd, 0);
+    if (map10 == MAP_FAILED){
+        printf(1, "mmap fail\n");
+        exit();
+    }
+
+    // All these should be successful
+    int res = munmap(map1, 4096) | munmap(map2, 4096) | munmap(map3, 4096) | munmap(map4, 4096) | munmap(map5, 4096) | munmap(map6, 4096) | munmap(map7, 4096) | munmap(map8, 4096) | munmap(map9, 4096);
+
+    if (res == -1){
+        printf(1, "munmap fail\n");
+        exit();
+    }
+
+    // Unmapping of map10 should fail => Not enough VMAs
+    if (munmap(map10+4096, 4096) == -1){
+        printf(1, "maxVMAMunmap ok\n");
+    } else{
+        printf(1, "munmap fail\n");
+        exit();
+    }
+}
 
 int main(){
-    sms();
+    // sms();
     // smp();
-    // if (fork()==0){
-    //     smsno();
-    // } else{
-    //     wait();
-    //     printf(1, "PROT_NONE ok\n");
-    // }
-    // sanity_check();
     // leftVMAtest();
     // rightVMAtest();
     // sandwichTest();
@@ -776,5 +1034,8 @@ int main(){
     // readWriteTest();
     // fourfiles();
     // sharedfd();
+    // EveryThingEverywhereAllAtOnce();
+    // maxVMATest();
+    maxVMAMunmapTest();
     exit();
 }

@@ -9,8 +9,11 @@
 
 int main(){
     int fd = open("README", O_RDWR);
-    char *ret = mmap(0, 1, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-    ret[0] = 'c';
+    char *ret = mmap(0, 1, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, 2, 4095);
+    if (ret == MAP_FAILED){
+        printf("Fail\n");
+        exit(0);
+    }
 
     if (fork() == 0){
         sleep(2);

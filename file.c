@@ -109,7 +109,6 @@ fileread(struct file *f, char *addr, int n)
   if(f->type == FD_INODE){
     if (f->ip!=(struct inode *) 0x80112a24){
       struct legend2 *map = 0;
-      cprintf("Reading %d bytes from %d\n", n, f->off);
       map = findInCachePage(f, f->off, n, 0);
       if (!map){
         return 0;

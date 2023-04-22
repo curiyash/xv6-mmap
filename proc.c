@@ -263,6 +263,7 @@ exit(void)
     }
   }
 
+
   begin_op();
   iput(curproc->cwd);
   end_op();
