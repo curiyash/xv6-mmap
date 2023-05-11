@@ -58,7 +58,6 @@ ls(char *path)
       if(de.inum == 0)
         continue;
       memmove(p, de.name, DIRSIZ);
-      printf(1, "name: %s\n", de.name);
       p[DIRSIZ] = 0;
       if(stat(buf, &st) < 0){
         printf(1, "ls: cannot stat %s\n", buf);

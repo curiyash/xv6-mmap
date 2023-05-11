@@ -949,6 +949,9 @@ struct legend2 *findInCachePage(struct file *f, int offset, int length, int op){
     } else{
       // If not, read into the cache
       readIntoPageCache(0, PGSIZE, prot, MAP_SHARED, f, page * PGSIZE);
+      // cprintf("\n#########################################\n");
+      // cprintf("Read in page num %d\n", page);
+      // cprintf("#########################################\n");
     }
   }
   return map;

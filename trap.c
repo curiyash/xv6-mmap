@@ -80,6 +80,7 @@ trap(struct trapframe *tf)
   case T_PGFLT:
     // If payheed, then only handle, else this is not what we are capable of
     char *faultedOn = (char *) rcr2();
+    cprintf("Faulted on %x\n", faultedOn);
     handleMapFault(faultedOn);
     switchuvm(myproc());
     break;

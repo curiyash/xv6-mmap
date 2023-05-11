@@ -104,7 +104,9 @@ void leftVMAtest(){
         printf(1, "Single process, MAP_SHARED, READ_ONLY fail\n");
         exit();
     }
-    printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
+    printf(1, "--------------------\n");
+    printf(1, "|    leftVMA ok    |\n");
+    printf(1, "--------------------\n");
 }
 
 void rightVMAtest(){
@@ -128,7 +130,9 @@ void rightVMAtest(){
         exit();
     }
     printf(1, "%c\n", ret[0]);
-    printf(1, "Single process, MAP_SHARED, READ_ONLY ok\n");
+    printf(1, "----------------------\n");
+    printf(1, "|    rightVMA ok     |\n");
+    printf(1, "----------------------\n");
 }
 
 void sandwichTest(){
@@ -164,7 +168,9 @@ void sandwichTest(){
         printf(1, "Sandwich test fail\n");
         exit();
     }
-    printf(1, "Sandwich test ok\n");
+    printf(1, "--------------------------------\n");
+    printf(1, "|       Sandwich test ok       |\n");
+    printf(1, "--------------------------------\n");
 }
 
 void sanity_check(){
@@ -246,7 +252,9 @@ void smp(char *status){
             printf(1, "Unmapping fail\n");
             return;
         }
-        printf(1, "MAP_PRIVATE ok\n");
+        printf(1, "----------------------------\n");
+        printf(1, "|      MAP_PRIVATE ok      |\n");
+        printf(1, "----------------------------\n");
     }
 }
 
@@ -293,7 +301,9 @@ void msf(){
         strcpy(p, "paren writes");
         memmove(&parent_map[12], p, 12);
         sleep(10);
-        printf(1, "MAP_SHARED ok\n");
+        printf(1, "--------------------------\n");
+        printf(1, "|     MAP_SHARED ok      |\n");
+        printf(1, "--------------------------\n");
         if (munmap(parent_map, 4096) == -1){
             printf(1, "munmap fail\n");
             exit();
@@ -357,7 +367,9 @@ void mpf(){
             printf(1, "MAP_PRIVATE munmap fail\n");
             exit();
         }
-        printf(1, "MAP_PRIVATE ok\n");
+        printf(1, "----------------------------\n");
+        printf(1, "|      MAP_PRIVATE ok      |\n");
+        printf(1, "----------------------------\n");
     }
 }
 
@@ -425,7 +437,9 @@ void concurrency(){
     }
 
     if (countA==7 && countB == 7 && countC == 6){
-        printf(1, "concurrency ok\n");
+        printf(1, "----------------------------\n");
+        printf(1, "|      concurrency ok      |\n");
+        printf(1, "----------------------------\n");
     }
     unlink("NEW");
 }
@@ -465,7 +479,9 @@ void forkTestMapShared(){
         exit();
     }
     unlink("TEST1");
-    printf(1, "fork test ok\n");
+    printf(1, "--------------------------------------\n");
+    printf(1, "|        fork test shared ok         |\n");
+    printf(1, "--------------------------------------\n");
 }
 
 void forkTestMapPrivate(){
@@ -507,7 +523,9 @@ void forkTestMapPrivate(){
         exit();
     }
     unlink("TEST2");
-    printf(1, "fork test ok\n");
+    printf(1, "----------------------------------------\n");
+    printf(1, "|         fork test private ok         |\n");
+    printf(1, "----------------------------------------\n");
 }
 
 void mapPrivateCorrectness(){
@@ -529,7 +547,9 @@ void mapPrivateCorrectness(){
         while (wait() != -1){
         }
         if (map[0] =='p'){
-            printf(1, "MAP_PRIVATE correctness ok\n");
+            printf(1, "----------------------------------------------------\n");
+            printf(1, "|            MAP_PRIVATE correctness ok            |\n");
+            printf(1, "----------------------------------------------------\n");
         } else{
             printf(1, "MAP_PRIVATE correctness fail\n");
             exit();
@@ -584,9 +604,13 @@ void sma(){
     }
 
     if ((countC == countP) && countC == 10){
-        printf(1, "MAP_ANONYMOUS ok\n");
+        printf(1, "------------------------------\n");
+        printf(1, "|      MAP_ANONYMOUS ok      |\n");
+        printf(1, "------------------------------\n");
     } else{
-        printf(1, "MAP_ANONYMOUS fail\n");
+        printf(1, "------------------------------\n");
+        printf(1, "|     MAP_ANONYMOUS fail     |\n");
+        printf(1, "------------------------------\n");
     }
 }
 
@@ -619,9 +643,13 @@ void readWriteTest(){
         memmove(c, &map[4], 4);
 
         if (!strcmp(c, "file")){
-            printf(1, "File write consistency ok\n");
+            printf(1, "--------------------------------------------------\n");
+            printf(1, "|           File write consistency ok            |\n");
+            printf(1, "--------------------------------------------------\n");
         } else{
-            printf(1, "File write consistency check fail\n");
+            printf(1, "------------------------------------------------------------------\n");
+            printf(1, "|               File write consistency check fail                |\n");
+            printf(1, "------------------------------------------------------------------\n");
         }
         exit();
     } else{
@@ -629,11 +657,15 @@ void readWriteTest(){
         sleep(2);
         read(fd, buf, 4);
         if (!strcmp(buf, "mmap")){
-            printf(1, "File read consistency ok\n");
+            printf(1, "------------------------------------------------\n");
+            printf(1, "|           File read consistency ok           |\n");
+            printf(1, "------------------------------------------------\n");
         } else{
             kill(pid);
             wait();
-            printf(1, "File read consistency check fail\n");
+            printf(1, "----------------------------------------------------------------\n");
+            printf(1, "|               File read consistency check fail               |\n");
+            printf(1, "----------------------------------------------------------------\n");
             exit();
         }
         
@@ -708,7 +740,9 @@ void fourfiles(void) {
     unlink(fname);
   }
 
-  printf(1, "fourfiles ok\n");
+  printf(1, "------------------------\n");
+  printf(1, "|     fourfiles ok     |\n");
+  printf(1, "------------------------\n");
 }
 
 void sharedfd(void){
@@ -755,9 +789,13 @@ void sharedfd(void){
 //   unlink("sharedfd");
   printf(1, "%d %d\n", nc, np);
   if(nc == 10*factor && np == 10*factor){
-    printf(1, "sharedfd ok\n");
+    printf(1, "----------------------\n");
+    printf(1, "|    sharedfd ok     |\n");
+    printf(1, "----------------------\n");
   } else {
-    printf(1, "sharedfd oops %d %d\n", nc, np);
+    printf(1, "--------------------------------------\n");
+    printf(1, "|        sharedfd oops %d %d         |\n");
+    printf(1, "--------------------------------------\n");
     exit();
   }
 }
@@ -779,9 +817,13 @@ void sms(char *status){
         memmove(c, status, 4);
         printf(1, "%s\n", c);
         if (strcmp(c, "okay")){
-            printf(1, "MAP_SHARED PROT_NONE fail\n");
+            printf(1, "----------------------------------------\n");
+            printf(1, "|             MAP_SHARED fail          |\n");
+            printf(1, "----------------------------------------\n");
         } else{
-            printf(1, "MAP_SHARED PROT_NONE ok\n");
+            printf(1, "-------------------------------------\n");
+            printf(1, "|          MAP_SHARED  ok           |\n");
+            printf(1, "-------------------------------------\n");
         }
     }
 }
@@ -795,7 +837,9 @@ void EveryThingEverywhereAllAtOnce(char *status){
     char *map = mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
     if (map == MAP_FAILED){
     } else{
-        printf(1, "File access and Prot check should have failed\n");
+        printf(1, "------------------------------------------------------------------------------------------\n");
+        printf(1, "|                     File access and Prot check should have failed                      |\n");
+        printf(1, "------------------------------------------------------------------------------------------\n");
         exit();
     }
 
@@ -884,7 +928,9 @@ void EveryThingEverywhereAllAtOnce(char *status){
         printf(1, "munmap fail\n");
         exit();
     }
-    printf(1, "Everything Everywhere ok\n");
+    printf(1, "------------------------------------------------\n");
+    printf(1, "|           Everything Everywhere ok           |\n");
+    printf(1, "------------------------------------------------\n");
 }
 
 void maxVMATest(){
@@ -948,7 +994,9 @@ void maxVMATest(){
             printf(1, "munmap fail\n");
             exit();
         }
-        printf(1, "Max VMA test ok\n");
+        printf(1, "------------------------------\n");
+        printf(1, "|      Max VMA test ok       |\n");
+        printf(1, "------------------------------\n");
     } else{
         printf(1, "Max VMA test fail\n");
         exit();
@@ -1018,7 +1066,9 @@ void maxVMAMunmapTest(){
 
     // Unmapping of map10 should fail => Not enough VMAs
     if (munmap(map10+4096, 4096) == -1){
-        printf(1, "maxVMAMunmap ok\n");
+        printf(1, "------------------------------\n");
+        printf(1, "|      maxVMAMunmap ok       |\n");
+        printf(1, "------------------------------\n");
     } else{
         printf(1, "munmap fail\n");
         exit();
@@ -1029,6 +1079,10 @@ int main(){
     // Run Test Set -> make clean -> Run Next Test
 
     /*----------------------------------------------------- Test Set 1 --------------------------------------------------*/
+    // printf(1, "-------------------------------------------------------------------------------------\n");
+    // printf(1, "|   Testing: MAP_ANONYMOUS, MAP_SHARED, MAP_PRIVATE, Somethings that can go wrong   |\n");
+    // printf(1, "-------------------------------------------------------------------------------------\n");
+
     // sma();
     // char *status = mmap(0, 4, PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, 0, 0);
     // if (status == MAP_FAILED){
@@ -1045,6 +1099,9 @@ int main(){
     //---------------------------------------------------------------------------------------------------------------------
 
     /*----------------------------------------------------- Test Set 2 --------------------------------------------------*/
+    // printf(1, "-------------------------------------------------------------\n");
+    // printf(1, "|   Testing: Unmapping, MAP_SHARED fork, MAP_PRIVATE fork   |\n");
+    // printf(1, "-------------------------------------------------------------\n");
     // leftVMAtest();
     // rightVMAtest();
     // sandwichTest();
@@ -1053,19 +1110,31 @@ int main(){
     //---------------------------------------------------------------------------------------------------------------------
 
     /*----------------------------------------------------- Test Set 3.1 --------------------------------------------------*/
+    // printf(1, "----------------------------------\n");
+    // printf(1, "|   Testing: VMA mapping limit   |\n");
+    // printf(1, "----------------------------------\n");
     // maxVMATest();
     /*----------------------------------------------------- Test Set 3.2 --------------------------------------------------*/
+    // printf(1, "------------------------------------\n");
+    // printf(1, "|   Testing: VMA unmapping limit   |\n");
+    // printf(1, "------------------------------------\n");
     // maxVMAMunmapTest();
     //---------------------------------------------------------------------------------------------------------------------
 
     /*----------------------------------------------------- Test Set 4 --------------------------------------------------*/
+    // printf(1, "-------------------------------------------------\n");
+    // printf(1, "|   Testing: correctness of fork, concurrency   |\n");
+    // printf(1, "-------------------------------------------------\n");
     // forkTestMapShared();
     // concurrency();
-    // mapPrivateCorrectness();
-    // readWriteTest();
     //---------------------------------------------------------------------------------------------------------------------
 
     /*----------------------------------------------------- Test Set 5 --------------------------------------------------*/
+    // printf(1, "------------------------------------------------------\n");
+    // printf(1, "|   Testing: correctness of map private, file read write, map private fork, fourfiles, sharedfd   |\n");
+    // printf(1, "------------------------------------------------------\n");
+    // mapPrivateCorrectness();
+    // readWriteTest();
     // forkTestMapPrivate();
     // fourfiles();
     // sharedfd();
